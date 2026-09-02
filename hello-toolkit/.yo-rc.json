@@ -1,0 +1,22 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "whichFolder": "subdir",
+    "solutionName": "hello-toolkit",
+    "useGulp": false,
+    "componentType": "webpart",
+    "template": "none",
+    "componentName": "MyWebPart",
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.11.0",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "hello-toolkit",
+    "libraryId": "f0ad9748-7743-4c3a-9888-5b3536950a32",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionShortDescription": "hello-toolkit description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false
+  }
+}

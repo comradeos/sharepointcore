@@ -1,0 +1,19 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "useGulp": false,
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.11.0",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "hello-spfx",
+    "libraryId": "bfa22804-e213-4971-b5ef-b23da291a831",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "hello-spfx",
+    "solutionShortDescription": "hello-spfx description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
