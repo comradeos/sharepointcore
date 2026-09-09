@@ -535,3 +535,126 @@ SPFx предоставляет debug- и production-сборку, но не с�
 6. Показать загрузку и обработку ошибок.
 7. Добавить создание и изменение задач.
 8. Собрать `.sppkg` и развернуть его через тестовый App Catalog.
+
+## 13. Выполненная настройка локальной среды (macOS)
+
+Эта настройка нужна, чтобы создавать, собирать и отлаживать SPFx-веб-части на Mac. Node.js и инструменты сборки работают только на компьютере разработчика; сам компонент затем выполняется в браузере на странице SharePoint.
+
+### 13.1. Node.js 22 LTS
+
+Для текущих проектов SPFx используется Node.js 22 LTS. Через Homebrew была установлена формула `node@22`:
+
+```bash
+brew install node@22
+```
+
+Чтобы сделать её активной в текущем окне терминала, используется путь:
+
+```bash
+export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+rehash
+```
+
+Проверка:
+
+```bash
+node -v
+which node
+npm -v
+```
+
+Полученный результат:
+
+```text
+Node.js v22.23.2
+/opt/homebrew/opt/node@22/bin/node
+npm 10.9.8
+```
+
+Чтобы Node 22 включался автоматически в новых окнах Terminal, настройка добавляется в `~/.zshrc`:
+
+```bash
+echo 'export PATH="/opt/homebrew/opt/node@22/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 13.2. Инструменты SPFx
+
+Глобально установлены инструменты для создания и сборки новых проектов:
+
+```bash
+npm install --global @rushstack/heft yo @microsoft/generator-sharepoint
+```
+
+- `yo` — запускает мастер создания проекта;
+- `@microsoft/generator-sharepoint` — создаёт структуру SPFx-проекта;
+- `heft` — собирает проект, запускает локальный сервер и создаёт production-пакет.
+
+Установлены версии:
+
+```text
+@microsoft/generator-sharepoint 1.23.2
+@rushstack/heft 1.2.26
+yo 7.0.1
+```
+
+Запуск `heft --version` вне проекта выдаёт ошибку о том, что не найден `package.json`. Это ожидаемо: Heft должен запускаться из папки SPFx-проекта.
+
+### 13.3. Созданный проект
+
+В каталоге `/Users/io/Workspace/sharepointcore/my-first-webpart` создан первый SPFx-проект командой:
+
+```bash
+yo @microsoft/sharepoint
+```
+
+Для него установлены зависимости:
+
+```bash
+npm install
+```
+
+Сообщение `moderate severity vulnerabilities` относится к зависимостям в цепочке npm-пакетов и не мешает учебному запуску. Не следует автоматически выполнять `npm audit fix --force`: эта команда может обновить зависимости до версий, которые несовместимы с SPFx.
+
+### 13.4. Локальный HTTPS-сертификат
+
+Для локальной отладки используется HTTPS на `localhost:4321`. Сертификат создаётся и добавляется в Keychain командой, выполняемой из папки проекта:
+
+```bash
+heft trust-dev-cert
+```
+
+На macOS эта команда может ждать пароль администратора. Если встроенный терминал VS Code не показывает запрос, её нужно остановить сочетанием `Ctrl+C`, открыть приложение Terminal, перейти в проект и выполнить команду там:
+
+```bash
+cd /Users/io/Workspace/sharepointcore/my-first-webpart
+heft trust-dev-cert
+```
+
+При вводе пароля macOS не отображает символы — это нормальное поведение.
+
+### 13.5. Адрес SharePoint tenant для Workbench
+
+SPFx открывает Hosted Workbench в SharePoint. Для этого ему нужен настоящий домен tenant. Для данной среды это:
+
+```text
+uaenergy0.sharepoint.com
+```
+
+Адрес `uaenergy0.sharepoint.com.mcas.ms` используется корпоративным прокси Microsoft Defender; в переменной SPFx его указывать не нужно.
+
+Перед запуском локального сервера задаётся переменная и выполняется команда:
+
+```bash
+export SPFX_SERVE_TENANT_DOMAIN="uaenergy0.sharepoint.com"
+heft start
+```
+
+Чтобы не повторять настройку в каждом новом терминале:
+
+```bash
+echo 'export SPFX_SERVE_TENANT_DOMAIN="uaenergy0.sharepoint.com"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Если в адресе Workbench отображается `{tenantdomain}`, значит переменная `SPFX_SERVE_TENANT_DOMAIN` не была задана для текущего окна терминала. После её установки следует остановить `heft start` через `Ctrl+C` и запустить его снова.
