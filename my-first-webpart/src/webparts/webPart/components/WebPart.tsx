@@ -17,7 +17,7 @@ export default class WebPart extends React.Component<IWebPartProps> {
     return (
       <section className={`${styles.webPart}`}>
         <div className={styles.welcome}>
-          <h2>Well done, {escape(userDisplayName)}! HELLO WORLDSssd@</h2>
+          <h2>Well done, {escape(userDisplayName)}!</h2>
           <div>{environmentMessage}</div>
           <div>Web part property value: <strong>{escape(description)}</strong></div>
         </div>
