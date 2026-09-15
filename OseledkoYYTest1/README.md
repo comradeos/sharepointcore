@@ -1,77 +1,202 @@
-# oseledko-yy-test-1
+# OseledkoYYTest1 — каталог товарів та інформація про SharePoint-сайт
 
-## Summary
+Вебчастина на SharePoint Framework (SPFx), яка отримує дані з двох API та відображає їх у двох окремих секціях:
 
-Short summary on functionality and used technologies.
+1. **Products** — каталог товарів із відкритого API DummyJSON.
+2. **SharePoint site** — відомості про заданий SharePoint-сайт через Microsoft Graph із введеним користувачем токеном доступу.
 
-[picture of the solution in action, if possible]
+Інтерфейс і повідомлення — англійською мовою. Значення з API відображаються мовою джерела без автоматичного перекладу. Коментарі до функцій і класів — українською.
 
-## Used SharePoint Framework Version
+## Технології
 
-![version](https://img.shields.io/badge/version-1.23.2-green.svg)
+| Складова | Версія / призначення |
+| --- | --- |
+| SharePoint Framework | 1.23.2 |
+| React / React DOM | 17.0.1 |
+| TypeScript | 5.8.x |
+| Node.js | `>=22.14.0 <23.0.0` |
+| Heft | Збирання, перевірки та пакування рішення |
+| Jest | Автоматизовані тести сервісів і форми |
+| SCSS Modules | Стилі компонентів |
 
-## Applies to
+Запити виконуються безпосередньо в браузері через `fetch`. Окремий сервер для обробки API-запитів не потрібен. Пакети PnP встановлені в проєкті, але поточні запити їх не використовують.
 
-- [SharePoint Framework](https://aka.ms/spfx)
-- [Microsoft 365 tenant](https://docs.microsoft.com/sharepoint/dev/spfx/set-up-your-developer-tenant)
+## 1. Каталог товарів — Products
 
-> Get your own free development tenant by subscribing to [Microsoft 365 developer program](http://aka.ms/o365devprogram)
+### Що відображається
 
-## Prerequisites
+Кожен рядок містить зображення, категорію, назву, опис і ціну товару. Ціна форматується за локаллю `en-US`, із двома знаками після десяткової крапки. Позначення валюти не додається, оскільки відповідь API не містить окремого поля валюти.
 
-> Any special pre-requisites?
+Кнопки керування:
 
-## Solution
+- **Refresh** — повторно завантажити поточну сторінку.
+- **Previous** — перейти до попередньої сторінки.
+- **Next** — перейти до наступної сторінки.
+- **Retry** — повторити запит після помилки.
 
-| Solution    | Author(s)                                               |
-| ----------- | ------------------------------------------------------- |
-| folder name | Author details (name, company, twitter alias with link) |
+Заголовок можна змінити в панелі властивостей вебчастини через поле **Title**. Назва джерела, підзаголовок, лічильник товарів і номер сторінки не відображаються.
 
-## Version history
+### Як працює завантаження
 
-| Version | Date             | Comments        |
-| ------- | ---------------- | --------------- |
-| 1.1     | March 10, 2021   | Update comment  |
-| 1.0     | January 29, 2021 | Initial release |
+Після відкриття вебчастини автоматично завантажуються перші 20 товарів:
 
-## Disclaimer
+```http
+GET https://dummyjson.com/products?limit=20&skip=0&select=title,description,category,price,thumbnail
+```
 
-**THIS CODE IS PROVIDED _AS IS_ WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.**
+Авторизація не потрібна. Параметр `limit` задає кількість записів, а `skip` — зміщення. Під час переходу між сторінками зміщення змінюється на 20. Значення `total` з відповіді визначає, чи доступна наступна сторінка.
 
----
+Сервіс `DummyJsonProductSource` перевіряє HTTP-статус і структуру даних. Компонент показує стан завантаження, порожній результат або повідомлення про помилку. Тайм-аут запиту — 15 секунд. Під час зміни сторінки або видалення компонента попередній запит скасовується через `AbortController`.
 
-## Minimal Path to Awesome
+## 2. Відомості про сайт — SharePoint site
 
-- Clone this repository
-- Ensure that you are at the solution folder
-- in the command-line run:
-  - `npm install -g @rushstack/heft`
-  - `npm install`
-  - `heft start`
+Друга секція розміщена під каталогом товарів і працює незалежно від нього. Відомості про сайт не додаються до списку товарів.
 
-> Include any additional steps as needed.
+Сайт: [oseledko-yy-test](https://uaenergy0.sharepoint.com/sites/oseledko-yy-test).
 
-Other build commands can be listed using `heft --help`.
+### Як користуватися формою
 
-## Features
+1. Вставте чинний токен доступу Microsoft Graph у поле **Access token**.
+2. Натисніть **Get site info**.
+3. Перегляньте відомості про сайт. Для перегляду повної відповіді розгорніть **JSON response**.
 
-Description of the extension that expands upon high-level summary above.
+Поле приховує введені символи. Можна вставити сам токен або значення з префіксом `Bearer`. Перед запитом сервіс прибирає зовнішні пробіли та цей префікс. Порожній токен або токен із внутрішніми пробілами чи переносами рядків відхиляється без мережевого запиту.
 
-This extension illustrates the following concepts:
+### Запит до Microsoft Graph
 
-- topic 1
-- topic 2
-- topic 3
+```http
+GET https://graph.microsoft.com/v1.0/sites/uaenergy0.sharepoint.com:/sites/oseledko-yy-test
+Authorization: Bearer <access_token>
+Accept: application/json
+```
 
-> Notice that better pictures and documentation will increase the sample usage and the value you are providing for others. Thanks for your submissions advance.
+Це API Microsoft Graph для отримання SharePoint-сайту за шляхом. Токен має надавати доступ до читання цього сайту; документація методу вказує дозвіл `Sites.Read.All` як мінімальний у відповідній таблиці дозволів.
 
-> Share your web part with others through Microsoft 365 Patterns and Practices program to get visibility and exposure. More details on the community, open-source projects and other activities from http://aka.ms/m365pnp.
+Адреси запиту та сайту задані константами `SITE_API_URL` і `SITE_WEB_URL` у файлі `GraphSiteService.ts`. Змінювати адресу через форму наразі не можна.
 
-## References
+### Результат
 
-- [Getting started with SharePoint Framework](https://docs.microsoft.com/sharepoint/dev/spfx/set-up-your-developer-tenant)
-- [Building for Microsoft teams](https://docs.microsoft.com/sharepoint/dev/spfx/build-for-teams-overview)
-- [Use Microsoft Graph in your solution](https://docs.microsoft.com/sharepoint/dev/spfx/web-parts/get-started/using-microsoft-graph-apis)
-- [Publish SharePoint Framework applications to the Marketplace](https://docs.microsoft.com/sharepoint/dev/spfx/publish-to-marketplace-overview)
-- [Microsoft 365 Patterns and Practices](https://aka.ms/m365pnp) - Guidance, tooling, samples and open-source controls for your Microsoft 365 development
-- [Heft Documentation](https://heft.rushstack.io/)
+| Підпис у віджеті | Поле відповіді |
+| --- | --- |
+| Display name | `displayName` |
+| Name | `name` |
+| Description | `description` |
+| Site ID | `id` |
+| Web URL | `webUrl` |
+| Hostname | `siteCollection.hostname` |
+| Created | `createdDateTime` |
+| Last modified | `lastModifiedDateTime` |
+
+Дати відображаються англійською мовою в часовому поясі UTC. Для відсутніх необов’язкових значень виводиться **Not provided**. Розділ **JSON response** показує повну отриману відповідь після перевірки її структури.
+
+### Токен і стан форми
+
+- Запит виконується лише після надсилання форми.
+- Токен зберігається лише в стані React-компонента. Код не записує його у файли, властивості вебчастини, `localStorage`, `sessionStorage` або журнали.
+- Токен передається в заголовку `Authorization`, а не в URL. Запит використовує `credentials: 'omit'`, `cache: 'no-store'` та `redirect: 'error'`.
+- Автоматичне отримання або оновлення токена не реалізоване. Після перезавантаження сторінки токен потрібно ввести знову.
+- Поки запит виконується, поле та кнопка заблоковані. Тайм-аут — 15 секунд.
+- Перед новим запитом попередній результат очищується. Після помилки можна змінити токен і повторно натиснути **Get site info**.
+- Під час видалення компонента активний запит і таймер скасовуються.
+
+### Обробка помилок
+
+| Ситуація | Поведінка |
+| --- | --- |
+| Токен відсутній | Повідомлення **Enter an access token**, без запиту до API |
+| HTTP 401 | Повідомлення про недійсний або прострочений токен |
+| HTTP 403 | Повідомлення про відсутність доступу до сайту |
+| HTTP 404 | Повідомлення, що сайт не знайдено |
+| HTTP 429 | Пропозиція повторити запит пізніше |
+| Інший помилковий HTTP-статус | Повідомлення з кодом статусу |
+| Некоректний JSON або структура даних | Повідомлення про некоректну відповідь |
+| Мережева помилка або тайм-аут | Повідомлення про неможливість з’єднання або перевищення часу очікування |
+
+## Структура проєкту
+
+Основні файли розміщені в `src/webparts/oseledkoYyTest1/`:
+
+```text
+OseledkoYyTest1WebPart.ts                 Життєвий цикл SPFx, тема та панель властивостей
+OseledkoYyTest1WebPart.manifest.json      Ідентифікатор і налаштування вебчастини
+components/
+  OseledkoYyTest1.tsx                    Каталог товарів і контейнер другої секції
+  IOseledkoYyTest1Props.ts                Властивості компонента каталогу
+  OseledkoYyTest1.module.scss             Стилі обох секцій
+  SiteInfo.tsx                          Форма токена та відображення даних сайту
+  SiteInfo.test.tsx                      Перевірка поведінки форми
+services/
+  IProductSource.ts                     Спільна модель товару та контракт джерела
+  DummyJsonProductSource.ts             Запити до DummyJSON
+  DummyJsonProductSource.test.ts        Тести каталогу
+  GraphSiteService.ts                   Запит до Graph, модель сайту та помилки
+  GraphSiteService.test.ts              Тести запитів до Graph
+loc/
+  en-us.js                              Англомовні підписи панелі властивостей
+  mystrings.d.ts                        Типи локалізованих рядків
+```
+
+`OseledkoYyTest1WebPart` створює джерело товарів і передає його React-компоненту. `SiteInfo` окремо викликає `getSiteInfo`. Обидві секції використовують кольори поточної теми SharePoint через CSS-змінні та мають стилі для вузьких екранів.
+
+## Локальний запуск
+
+Потрібні Node.js зазначеної версії, npm і доступ до SharePoint-сайту для перевірки у Workbench.
+
+```sh
+cd /Users/io/Workspace/sharepointcore/OseledkoYYTest1
+npm ci
+npm start
+```
+
+`npm start` запускає Heft у режимі відстеження змін. У `config/serve.json` налаштовано HTTPS, порт `4321` і сторінку:
+
+[SharePoint Workbench](https://uaenergy0.sharepoint.com/sites/oseledko-yy-test/_layouts/workbench.aspx).
+
+Для локального HTTPS потрібен довірений сертифікат розробника. Якщо його ще не налаштовано, у проєкті доступна команда:
+
+```sh
+npx heft trust-dev-cert
+```
+
+У Workbench додайте вебчастину **OseledkoYYTest1**. Перша секція завантажить товари автоматично; у другій потрібно ввести токен і надіслати форму.
+
+Тимчасове прев’ю на `http://127.0.0.1:8765/`, яке використовувалося під час розробки, не є частиною `npm start` і не замінює перевірку у SharePoint.
+
+## Збирання та пакування
+
+```sh
+npm run build
+```
+
+Команда послідовно очищує результати попереднього збирання, компілює код і стилі, запускає ESLint та Jest, створює production-збірку й пакує рішення.
+
+Результат:
+
+```text
+sharepoint/solution/oseledko-yy-test-1.sppkg
+```
+
+Пакет можна використати для розгортання через каталог застосунків SharePoint. Саме збирання не публікує рішення на сайті.
+
+Інші команди:
+
+```sh
+npm run clean                  # Очистити результати збирання
+npx heft build --production    # Зібрати й перевірити код без тестів і пакування
+npx heft test --production     # Зібрати проєкт і запустити тести без пакування
+```
+
+## Автоматизовані перевірки
+
+У поточній реалізації є 24 тести у трьох наборах:
+
+- **DummyJsonProductSource** — пагінація, порожній каталог, помилки HTTP, перевірка структури відповіді, мережева помилка та скасування запиту.
+- **GraphSiteService** — адреса й параметри запиту, передавання токена в заголовку, перевірка токена, помилки HTTP, некоректні дані та скасування.
+- **SiteInfo** — відсутність автоматичного запиту при відкритті, прихований ввід токена, відображення успішної відповіді та очищення попередніх даних після помилки авторизації.
+
+Тести використовують підміну `fetch` і тестові дані. Чинний токен або доступ до реального SharePoint-сайту для їх запуску не потрібні. Реальне завантаження захищених даних перевіряється окремо через форму з чинним токеном.
+
+## Документація API
+
+- [DummyJSON: товари та пагінація](https://dummyjson.com/docs/products).
+- [Microsoft Graph: отримання сайту за шляхом](https://learn.microsoft.com/en-us/graph/api/site-getbypath?view=graph-rest-1.0).

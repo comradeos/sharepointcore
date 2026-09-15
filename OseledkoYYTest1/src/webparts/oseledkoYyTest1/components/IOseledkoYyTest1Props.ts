@@ -1,6 +1,6 @@
+import type { IProductSource } from '../services/IProductSource';
+
 export interface IOseledkoYyTest1Props {
   description: string;
-  isDarkTheme: boolean;
-  environmentMessage: string;
-  userDisplayName: string;
+  source: IProductSource;
 }

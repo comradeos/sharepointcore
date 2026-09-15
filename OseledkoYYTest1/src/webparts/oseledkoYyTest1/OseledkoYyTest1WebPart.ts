@@ -11,91 +11,63 @@ import { IReadonlyTheme } from '@microsoft/sp-component-base';
 import * as strings from 'OseledkoYyTest1WebPartStrings';
 import OseledkoYyTest1 from './components/OseledkoYyTest1';
 import { IOseledkoYyTest1Props } from './components/IOseledkoYyTest1Props';
+import { DummyJsonProductSource } from './services/DummyJsonProductSource';
 
 export interface IOseledkoYyTest1WebPartProps {
   description: string;
 }
 
+/** Керує життєвим циклом вебчастини та передає джерело даних React-компоненту. */
 export default class OseledkoYyTest1WebPart extends BaseClientSideWebPart<IOseledkoYyTest1WebPartProps> {
 
-  private _isDarkTheme: boolean = false;
-  private _environmentMessage: string = '';
+  private readonly _productSource = new DummyJsonProductSource();
 
+  /** Відображає компонент каталогу в контейнері SharePoint. */
   public render(): void {
     const element: React.ReactElement<IOseledkoYyTest1Props> = React.createElement(
       OseledkoYyTest1,
       {
         description: this.properties.description,
-        isDarkTheme: this._isDarkTheme,
-        environmentMessage: this._environmentMessage,
-        userDisplayName: this.context.pageContext.user.displayName
+        source: this._productSource
       }
     );
 
     ReactDom.render(element, this.domElement);
   }
 
-  protected onInit(): Promise<void> {
-    return this._getEnvironmentMessage().then(message => {
-      this._environmentMessage = message;
-    });
-  }
-
-
-
-  private _getEnvironmentMessage(): Promise<string> {
-    if (!!this.context.sdks.microsoftTeams) { // running in Teams, office.com or Outlook
-      return this.context.sdks.microsoftTeams.teamsJs.app.getContext()
-        .then(context => {
-          let environmentMessage: string = '';
-          switch (context.app.host.name) {
-            case 'Office': // running in Office
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentOffice : strings.AppOfficeEnvironment;
-              break;
-            case 'Outlook': // running in Outlook
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentOutlook : strings.AppOutlookEnvironment;
-              break;
-            case 'Teams': // running in Teams
-            case 'TeamsModern':
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentTeams : strings.AppTeamsTabEnvironment;
-              break;
-            default:
-              environmentMessage = strings.UnknownEnvironment;
-          }
-
-          return environmentMessage;
-        });
-    }
-
-    return Promise.resolve(this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentSharePoint : strings.AppSharePointEnvironment);
-  }
-
+  /** Оновлює кольори каталогу відповідно до теми SharePoint. */
   protected onThemeChanged(currentTheme: IReadonlyTheme | undefined): void {
     if (!currentTheme) {
       return;
     }
 
-    this._isDarkTheme = !!currentTheme.isInverted;
     const {
       semanticColors
     } = currentTheme;
 
     if (semanticColors) {
       this.domElement.style.setProperty('--bodyText', semanticColors.bodyText || null);
+      this.domElement.style.setProperty('--bodyBackground', semanticColors.bodyBackground || null);
+      this.domElement.style.setProperty('--mutedText', semanticColors.bodySubtext || null);
+      this.domElement.style.setProperty('--border', semanticColors.bodyDivider || null);
+      this.domElement.style.setProperty('--rowBackground', semanticColors.bodyStandoutBackground || null);
       this.domElement.style.setProperty('--link', semanticColors.link || null);
       this.domElement.style.setProperty('--linkHovered', semanticColors.linkHovered || null);
     }
 
   }
 
+  /** Демонтує React-компонент і запускає очищення його ресурсів. */
   protected onDispose(): void {
     ReactDom.unmountComponentAtNode(this.domElement);
   }
 
+  /** Повертає версію формату збережених властивостей вебчастини. */
   protected get dataVersion(): Version {
     return Version.parse('1.0');
   }
 
+  /** Налаштовує панель редагування заголовка каталогу. */
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
     return {
       pages: [
