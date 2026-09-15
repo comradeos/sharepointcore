@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "oseledko-yy-test-1-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/oseledkoYyTest1/OseledkoYyTest1WebPart.js",
+          "manifest": "./src/webparts/oseledkoYyTest1/OseledkoYyTest1WebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "OseledkoYyTest1WebPartStrings": "lib/webparts/oseledkoYyTest1/loc/{locale}.js",
+    "PropertyControlStrings": "node_modules/@pnp/spfx-property-controls/lib/loc/{locale}.js",
+    "ControlStrings": "node_modules/@pnp/spfx-controls-react/lib/loc/{locale}.js"
+  }
+}

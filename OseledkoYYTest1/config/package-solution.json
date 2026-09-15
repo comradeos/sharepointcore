@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "oseledko-yy-test-1-client-side-solution",
+    "id": "7166933c-6ab7-4249-adad-e72c688dccc2",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "OseledkoYYTest1 description"
+      },
+      "longDescription": {
+        "default": "OseledkoYYTest1 description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "oseledko-yy-test-1 Feature",
+        "description": "The feature that activates elements of the oseledko-yy-test-1 solution.",
+        "id": "04aa3bd3-a5e2-41e5-9ddc-141e461cb31a",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/oseledko-yy-test-1.sppkg"
+  }
+}
