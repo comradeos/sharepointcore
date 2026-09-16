@@ -9,9 +9,9 @@ import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 import * as strings from 'OseledkoYyTest1WebPartStrings';
-import OseledkoYyTest1 from './components/OseledkoYyTest1';
-import { IOseledkoYyTest1Props } from './components/IOseledkoYyTest1Props';
-import { DummyJsonProductSource } from './services/DummyJsonProductSource';
+import OseledkoYyTest1 from './components/layout/OseledkoYyTest1';
+import { IOseledkoYyTest1Props } from './components/layout/IOseledkoYyTest1Props';
+import { DummyJsonProductSource } from './services/products/DummyJsonProductSource';
 
 export interface IOseledkoYyTest1WebPartProps {
   description: string;
@@ -22,7 +22,7 @@ export default class OseledkoYyTest1WebPart extends BaseClientSideWebPart<IOsele
 
   private readonly _productSource = new DummyJsonProductSource();
 
-  /** Відображає компонент каталогу в контейнері SharePoint. */
+  /** Відображає контейнер із компонентами товарів і відомостей сайту. */
   public render(): void {
     const element: React.ReactElement<IOseledkoYyTest1Props> = React.createElement(
       OseledkoYyTest1,
@@ -35,7 +35,7 @@ export default class OseledkoYyTest1WebPart extends BaseClientSideWebPart<IOsele
     ReactDom.render(element, this.domElement);
   }
 
-  /** Оновлює кольори каталогу відповідно до теми SharePoint. */
+  /** Оновлює спільні кольори обох компонентів відповідно до теми SharePoint. */
   protected onThemeChanged(currentTheme: IReadonlyTheme | undefined): void {
     if (!currentTheme) {
       return;

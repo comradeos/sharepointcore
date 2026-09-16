@@ -1,4 +1,4 @@
-import type { IProductSource } from '../services/IProductSource';
+import type { IProductSource } from '../../services/products/IProductSource';
 
 export interface IOseledkoYyTest1Props {
   description: string;
