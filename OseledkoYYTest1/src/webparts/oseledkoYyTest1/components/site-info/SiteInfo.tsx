@@ -1,9 +1,7 @@
 import * as React from 'react';
 import styles from './SiteInfo.module.scss';
-import { getSiteInfo, ISiteInfo, SITE_WEB_URL, SiteInfoError } from '../../services/site-info/GraphSiteService';
+import type { ISiteInfo, ISiteInfoSource } from '../../services/site-info/ISiteInfoSource';
 
-const REQUEST_TIMEOUT_SECONDS = 15;
-const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_SECONDS * 1_000;
 const NOT_PROVIDED_TEXT = 'Not provided';
 const JSON_INDENTATION = 2;
 const DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -29,7 +27,11 @@ function formatSiteDate(value: string | undefined): string {
     : date.toLocaleString('en-US', DATE_FORMAT_OPTIONS);
 }
 
-/** Перетворює відповідь Microsoft Graph на рядки для відображення у формі. */
+interface ISiteInfoProps {
+  source: ISiteInfoSource;
+}
+
+/** Перетворює відповідь SharePoint API на рядки для відображення у секції. */
 function getSiteDetails(site: ISiteInfo): ISiteDetail[] {
   return [
     { label: 'Display name', value: site.displayName },
@@ -37,121 +39,56 @@ function getSiteDetails(site: ISiteInfo): ISiteDetail[] {
     { label: 'Description', value: site.description || NOT_PROVIDED_TEXT },
     { label: 'Site ID', value: site.id },
     { label: 'Web URL', value: site.webUrl },
-    { label: 'Hostname', value: site.siteCollection?.hostname || NOT_PROVIDED_TEXT },
+    { label: 'Hostname', value: site.hostname || NOT_PROVIDED_TEXT },
     { label: 'Created', value: formatSiteDate(site.createdDateTime) },
     { label: 'Last modified', value: formatSiteDate(site.lastModifiedDateTime) }
   ];
 }
 
-/** Створює безпечне повідомлення про помилку виконання запиту до Microsoft Graph. */
-function getRequestErrorMessage(reason: unknown, timedOut: boolean): string {
-  if (timedOut) {
-    return `The request timed out after ${REQUEST_TIMEOUT_SECONDS} seconds. Please try again.`;
-  }
-
-  if (reason instanceof SiteInfoError) {
-    return reason.message;
-  }
-
-  return 'Unable to connect to Microsoft Graph. Check your connection and try again.';
-}
-
-/** Відображає форму токена та отримані з Microsoft Graph відомості про сайт. */
-export default function SiteInfo(): React.ReactElement {
-  const [token, setToken] = React.useState('');
+/** Відображає відомості про поточний SharePoint-сайт, отримані через PnPjs. */
+export default function SiteInfo({ source }: ISiteInfoProps): React.ReactElement {
   const [site, setSite] = React.useState<ISiteInfo>();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
-  const requestControllerRef = React.useRef<AbortController>();
-  const timeoutIdRef = React.useRef<number>();
 
-  /** Реєструє очищення запиту та таймера під час демонтування форми. */
+  /** Завантажує відомості сайту після монтування компонента або зміни джерела. */
   React.useEffect(() => {
-    /** Скасовує активний запит і звільняє таймер після видалення компонента. */
+    let isCurrent = true;
+
+    /** Оновлює стан лише якщо компонент ще відображається на сторінці. */
+    const loadSiteInfo = async (): Promise<void> => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const result = await source.getSiteInfo();
+
+        if (isCurrent) {
+          setSite(result);
+        }
+      } catch {
+        if (isCurrent) {
+          setSite(undefined);
+          setError('Unable to load SharePoint site information. Check your permissions and try again.');
+        }
+      } finally {
+        if (isCurrent) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadSiteInfo().catch(() => undefined);
+
+    /** Позначає результат запиту неактуальним після демонтування компонента. */
     return () => {
-      requestControllerRef.current?.abort();
-      requestControllerRef.current = undefined;
-      window.clearTimeout(timeoutIdRef.current);
+      isCurrent = false;
     };
-  }, []);
-
-  /** Зберігає введений токен лише в оперативному стані компонента. */
-  const changeToken = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    setToken(event.target.value);
-    setError('');
-  };
-
-  /** Виконує запит за натисканням кнопки та оновлює результат або помилку. */
-  const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-
-    requestControllerRef.current?.abort();
-    window.clearTimeout(timeoutIdRef.current);
-
-    const requestController = new AbortController();
-    requestControllerRef.current = requestController;
-    let timedOut = false;
-
-    setError('');
-    setSite(undefined);
-    setLoading(true);
-
-    /** Зупиняє запит після перевищення часу очікування відповіді. */
-    const abortOnTimeout = (): void => {
-      timedOut = true;
-      requestController.abort();
-    };
-
-    timeoutIdRef.current = window.setTimeout(abortOnTimeout, REQUEST_TIMEOUT_MS);
-
-    try {
-      const result = await getSiteInfo(token, requestController.signal);
-
-      if (requestControllerRef.current === requestController) {
-        setSite(result);
-      }
-    } catch (reason) {
-      if (requestControllerRef.current === requestController) {
-        setError(getRequestErrorMessage(reason, timedOut));
-      }
-    } finally {
-      if (requestControllerRef.current === requestController) {
-        window.clearTimeout(timeoutIdRef.current);
-        requestControllerRef.current = undefined;
-        setLoading(false);
-      }
-    }
-  };
+  }, [source]);
 
   return (
     <section className={styles.section} aria-label="SharePoint site information" lang="en">
       <h2 className={styles.heading}>SharePoint site</h2>
-
-      <a className={styles.siteLink} href={SITE_WEB_URL} target="_blank" rel="noreferrer">
-        {SITE_WEB_URL}
-      </a>
-
-      <form className={styles.siteForm} onSubmit={submit} noValidate>
-        <label className={styles.tokenLabel}>
-          Access token
-          <input
-            className={styles.tokenInput}
-            type="password"
-            value={token}
-            onChange={changeToken}
-            placeholder="Paste your Microsoft Graph access token"
-            autoComplete="off"
-            spellCheck={false}
-            autoCapitalize="none"
-            disabled={loading}
-            aria-required="true"
-          />
-        </label>
-
-        <button className={styles.button} type="submit" disabled={loading}>
-          Get site info
-        </button>
-      </form>
 
       {loading && (
         <p className={styles.feedback} role="status">
@@ -170,6 +107,9 @@ export default function SiteInfo(): React.ReactElement {
           <p className={styles.feedback} role="status">
             Site information loaded.
           </p>
+          <a className={styles.siteLink} href={site.webUrl} target="_blank" rel="noreferrer">
+            {site.webUrl}
+          </a>
           <dl className={styles.siteDetails}>
             {getSiteDetails(site).map(detail => (
               <React.Fragment key={detail.label}>

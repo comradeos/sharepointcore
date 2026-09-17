@@ -3,16 +3,12 @@ jest.mock('./SiteInfo.module.scss', () => ({}), { virtual: true });
 
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import { act, Simulate } from 'react-dom/test-utils';
+import { act } from 'react-dom/test-utils';
 import SiteInfo from './SiteInfo';
 
-const SITE_FORM_SELECTOR = 'form';
-const TOKEN_INPUT_SELECTOR = 'input';
 const SITE_DETAILS_SELECTOR = 'dl';
 const SITE_RESPONSE_SELECTOR = 'pre';
-const ACCESS_TOKEN = 'test-token';
 const SUCCESS_MESSAGE = 'Site information loaded.';
-const AUTHORIZATION_ERROR_TEXT = 'invalid or expired';
 const TEST_SITE = {
   id: 'test-site-id',
   name: 'example-site',
@@ -21,73 +17,29 @@ const TEST_SITE = {
   description: 'Example description'
 };
 
-const originalFetch = globalThis.fetch;
-
-/** Повертає обов’язковий елемент тестового DOM або завершує тест зрозумілою помилкою. */
-function getRequiredElement<T extends Element>(container: ParentNode, selector: string): T {
-  const element = container.querySelector(selector);
-
-  if (!element) {
-    throw new Error(`Expected element matching "${selector}" to exist.`);
-  }
-
-  return element as T;
-}
-
-/** Відновлює мережеву функцію після завершення тесту. */
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
-
-/** Перевіряє ручне завантаження, відображення відповіді та очищення старих даних після помилки. */
-it('loads site metadata on submit and clears the previous result when authorization fails', async () => {
+/** Перевіряє автоматичне завантаження та відображення відомостей поточного сайту. */
+it('loads current site metadata automatically through its source', async () => {
   // Arrange
-  const fetchMock = jest.fn();
-  globalThis.fetch = fetchMock;
+  const getSiteInfo = jest.fn().mockResolvedValue(TEST_SITE);
+  const source = { getSiteInfo };
   
   const container = document.createElement('div');
   document.body.appendChild(container);
 
   try {
     // Act
-    act(() => {
-      ReactDOM.render(<SiteInfo />, container);
-    });
-
-    // Assert
-    expect(fetchMock).not.toHaveBeenCalled();
-    const tokenInput = getRequiredElement<HTMLInputElement>(container, TOKEN_INPUT_SELECTOR);
-    const form = getRequiredElement<HTMLFormElement>(container, SITE_FORM_SELECTOR);
-    expect(tokenInput.type).toBe('password');
-
-    // Act
-    act(() => {
-      tokenInput.value = ACCESS_TOKEN;
-      Simulate.change(tokenInput);
-    });
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => TEST_SITE
-    });
     await act(async () => {
-      Simulate.submit(form);
+      ReactDOM.render(<SiteInfo source={source} />, container);
+      await Promise.resolve();
     });
 
     // Assert
+    expect(getSiteInfo).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain(SUCCESS_MESSAGE);
     expect(container.querySelector(SITE_DETAILS_SELECTOR)?.textContent).toContain(TEST_SITE.displayName);
     expect(container.querySelector(SITE_RESPONSE_SELECTOR)?.textContent).toContain(TEST_SITE.id);
-    expect(container.textContent).not.toContain(ACCESS_TOKEN);
-
-    // Act
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 });
-    await act(async () => {
-      Simulate.submit(form);
-    });
-
-    // Assert
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(AUTHORIZATION_ERROR_TEXT);
-    expect(container.querySelector(SITE_DETAILS_SELECTOR)).toBeNull();
+    expect(container.querySelector('input')).toBeNull();
+    expect(container.querySelector('button')).toBeNull();
   } finally {
     /** Демонтує форму та очищує її таймери після тесту. */
     act(() => {

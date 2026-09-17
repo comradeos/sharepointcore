@@ -12,6 +12,14 @@ import * as strings from 'OseledkoYyTest1WebPartStrings';
 import OseledkoYyTest1 from './components/layout/OseledkoYyTest1';
 import { IOseledkoYyTest1Props } from './components/layout/IOseledkoYyTest1Props';
 import { DummyJsonProductSource } from './services/products/DummyJsonProductSource';
+import { PnpSiteInfoSource } from './services/site-info/PnpSiteInfoSource';
+import type { ISiteInfoSource } from './services/site-info/ISiteInfoSource';
+import { PnpSiteListSource } from './services/site-lists/PnpSiteListSource';
+import type { ISiteListSource } from './services/site-lists/ISiteListSource';
+import { PnpUserLookupSource } from './services/user-lookup/PnpUserLookupSource';
+import type { IUserLookupSource } from './services/user-lookup/IUserLookupSource';
+import { PnpUserCreateSource } from './services/user-create/PnpUserCreateSource';
+import type { IUserCreateSource } from './services/user-create/IUserCreateSource';
 
 export interface IOseledkoYyTest1WebPartProps {
   description: string;
@@ -21,6 +29,19 @@ export interface IOseledkoYyTest1WebPartProps {
 export default class OseledkoYyTest1WebPart extends BaseClientSideWebPart<IOseledkoYyTest1WebPartProps> {
 
   private readonly _productSource = new DummyJsonProductSource();
+  private _siteInfoSource!: ISiteInfoSource;
+  private _siteListSource!: ISiteListSource;
+  private _userLookupSource!: IUserLookupSource;
+  private _userCreateSource!: IUserCreateSource;
+
+  /** Створює джерело сайту після отримання SharePoint-контексту вебчастини. */
+  protected async onInit(): Promise<void> {
+    await super.onInit();
+    this._siteInfoSource = new PnpSiteInfoSource(this.context);
+    this._siteListSource = new PnpSiteListSource(this.context);
+    this._userLookupSource = new PnpUserLookupSource(this.context);
+    this._userCreateSource = new PnpUserCreateSource(this.context);
+  }
 
   /** Відображає контейнер із компонентами товарів і відомостей сайту. */
   public render(): void {
@@ -28,7 +49,11 @@ export default class OseledkoYyTest1WebPart extends BaseClientSideWebPart<IOsele
       OseledkoYyTest1,
       {
         description: this.properties.description,
-        source: this._productSource
+        source: this._productSource,
+        siteInfoSource: this._siteInfoSource,
+        siteListSource: this._siteListSource,
+        userLookupSource: this._userLookupSource,
+        userCreateSource: this._userCreateSource
       }
     );
 

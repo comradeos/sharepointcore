@@ -1,0 +1,80 @@
+/* Контейнер секції списків SharePoint. */
+.section {
+  box-sizing: border-box;
+  padding: 24px;
+  color: var(--bodyText, #242424);
+  background: var(--bodyBackground, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  font-family: inherit;
+}
+
+.heading {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+/* Повідомлення про завантаження, порожній результат і помилку. */
+.feedback {
+  padding: 12px 0;
+  color: var(--mutedText, #616161);
+  font-size: 13px;
+}
+
+.error {
+  padding: 0 16px 16px;
+  margin: 20px 0 0;
+  overflow-wrap: anywhere;
+  border-left: 3px solid #c4314b;
+}
+
+/* Таблиця зі списками сайту. */
+.tableWrapper {
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+
+  th,
+  td {
+    padding: 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+  }
+
+  th {
+    color: var(--mutedText, #616161);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  td {
+    overflow-wrap: anywhere;
+  }
+
+  a {
+    color: var(--link, #005a9e);
+
+    &:hover {
+      color: var(--linkHovered, #004578);
+    }
+  }
+}
+
+/* Адаптує секцію для вузьких екранів. */
+@media (max-width: 480px) {
+  .section {
+    padding: 16px;
+  }
+
+  .table {
+    min-width: 580px;
+  }
+}
