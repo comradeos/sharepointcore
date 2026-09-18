@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "spfx-task-oseledko-yy-client-side-solution",
+    "id": "652315a7-72f5-4d7a-a467-b93a41a1c267",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "SPFXTask_Oseledko_YY description"
+      },
+      "longDescription": {
+        "default": "SPFXTask_Oseledko_YY description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "spfx-task-oseledko-yy Feature",
+        "description": "The feature that activates elements of the spfx-task-oseledko-yy solution.",
+        "id": "27242570-aeef-4ede-8420-969e85efc1dc",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/spfx-task-oseledko-yy.sppkg"
+  }
+}

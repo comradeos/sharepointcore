@@ -1,0 +1,22 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "whichFolder": "subdir",
+    "solutionName": "SPFXTask_Oseledko_YY",
+    "useGulp": false,
+    "componentType": "webpart",
+    "template": "react",
+    "componentName": "SPFXTask_Oseledko_YY",
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.23.2",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "spfx-task-oseledko-yy",
+    "libraryId": "652315a7-72f5-4d7a-a467-b93a41a1c267",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionShortDescription": "SPFXTask_Oseledko_YY description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false
+  }
+}
