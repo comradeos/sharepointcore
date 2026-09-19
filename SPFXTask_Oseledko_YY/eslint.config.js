@@ -10,5 +10,11 @@ module.exports = [
         project: './tsconfig.json'
       }
     }
+  },
+  {
+    files: ['**/models/ServiceDeskModels.ts'],
+    rules: {
+      '@rushstack/no-new-null': 'off'
+    }
   }
 ];

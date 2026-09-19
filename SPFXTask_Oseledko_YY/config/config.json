@@ -15,6 +15,6 @@
   "localizedResources": {
     "SpfxTaskOseledkoYyWebPartStrings": "lib/webparts/spfxTaskOseledkoYy/loc/{locale}.js",
     "PropertyControlStrings": "node_modules/@pnp/spfx-property-controls/lib/loc/{locale}.js",
-    "ControlStrings": "node_modules/@pnp/spfx-controls-react/lib/loc/{locale}.js"
+    "ControlStrings": "lib/webparts/spfxTaskOseledkoYy/loc/control-{locale}.js"
   }
 }

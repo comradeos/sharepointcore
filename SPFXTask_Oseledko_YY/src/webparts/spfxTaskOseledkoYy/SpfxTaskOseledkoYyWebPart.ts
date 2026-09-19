@@ -1,120 +1,57 @@
 import * as React from 'react';
 import * as ReactDom from 'react-dom';
 import { Version } from '@microsoft/sp-core-library';
-import {
-  type IPropertyPaneConfiguration,
-  PropertyPaneTextField
-} from '@microsoft/sp-property-pane';
-import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import { IReadonlyTheme } from '@microsoft/sp-component-base';
+import { IPropertyPaneConfiguration } from '@microsoft/sp-property-pane';
+import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import { IPeoplePickerContext } from '@pnp/spfx-controls-react/lib/PeoplePicker';
 
-import * as strings from 'SpfxTaskOseledkoYyWebPartStrings';
-import SpfxTaskOseledkoYy from './components/SpfxTaskOseledkoYy';
-import { ISpfxTaskOseledkoYyProps } from './components/ISpfxTaskOseledkoYyProps';
+import ServiceRequestsPage from './components/ServiceRequestsPage';
+import { IServiceRequestsPageProps } from './components/IServiceRequestsPageProps';
 
-export interface ISpfxTaskOseledkoYyWebPartProps {
-  description: string;
-}
-
-export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<ISpfxTaskOseledkoYyWebPartProps> {
-
-  private _isDarkTheme: boolean = false;
-  private _environmentMessage: string = '';
-
+// підключає екран заявок до сторінки sharepoint
+export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<Record<string, never>> {
+  // передає екрану клієнт sharepoint та адресу поточного сайту
   public render(): void {
-    const element: React.ReactElement<ISpfxTaskOseledkoYyProps> = React.createElement(
-      SpfxTaskOseledkoYy,
+    // узгоджує типи різних версій пакетів sharepoint
+    const peoplePickerContext = {
+      absoluteUrl: this.context.pageContext.web.absoluteUrl,
+      msGraphClientFactory: this.context.msGraphClientFactory,
+      spHttpClient: this.context.spHttpClient
+    } as unknown as IPeoplePickerContext;
+    const element: React.ReactElement<IServiceRequestsPageProps> = React.createElement(
+      ServiceRequestsPage,
       {
-        description: this.properties.description,
-        isDarkTheme: this._isDarkTheme,
-        environmentMessage: this._environmentMessage,
-        userDisplayName: this.context.pageContext.user.displayName
+        spHttpClient: this.context.spHttpClient,
+        webUrl: this.context.pageContext.web.absoluteUrl,
+        peoplePickerContext,
+        currentUserEmail: this.context.pageContext.user.email
       }
     );
 
     ReactDom.render(element, this.domElement);
   }
 
-  protected onInit(): Promise<void> {
-    return this._getEnvironmentMessage().then(message => {
-      this._environmentMessage = message;
-    });
-  }
-
-
-
-  private _getEnvironmentMessage(): Promise<string> {
-    if (!!this.context.sdks.microsoftTeams) { // running in Teams, office.com or Outlook
-      return this.context.sdks.microsoftTeams.teamsJs.app.getContext()
-        .then(context => {
-          let environmentMessage: string = '';
-          switch (context.app.host.name) {
-            case 'Office': // running in Office
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentOffice : strings.AppOfficeEnvironment;
-              break;
-            case 'Outlook': // running in Outlook
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentOutlook : strings.AppOutlookEnvironment;
-              break;
-            case 'Teams': // running in Teams
-            case 'TeamsModern':
-              environmentMessage = this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentTeams : strings.AppTeamsTabEnvironment;
-              break;
-            default:
-              environmentMessage = strings.UnknownEnvironment;
-          }
-
-          return environmentMessage;
-        });
-    }
-
-    return Promise.resolve(this.context.isServedFromLocalhost ? strings.AppLocalEnvironmentSharePoint : strings.AppSharePointEnvironment);
-  }
-
+  // оновлює колір тексту після зміни теми сайту
   protected onThemeChanged(currentTheme: IReadonlyTheme | undefined): void {
-    if (!currentTheme) {
-      return;
+    const bodyText = currentTheme?.semanticColors?.bodyText;
+    if (bodyText) {
+      this.domElement.style.setProperty('--bodyText', bodyText);
     }
-
-    this._isDarkTheme = !!currentTheme.isInverted;
-    const {
-      semanticColors
-    } = currentTheme;
-
-    if (semanticColors) {
-      this.domElement.style.setProperty('--bodyText', semanticColors.bodyText || null);
-      this.domElement.style.setProperty('--link', semanticColors.link || null);
-      this.domElement.style.setProperty('--linkHovered', semanticColors.linkHovered || null);
-    }
-
   }
 
+  // прибирає екран після видалення вебчастини зі сторінки
   protected onDispose(): void {
     ReactDom.unmountComponentAtNode(this.domElement);
   }
 
+  // повертає версію збережених властивостей вебчастини
   protected get dataVersion(): Version {
     return Version.parse('1.0');
   }
 
+  // повертає порожню панель налаштувань бо екран не має параметрів
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
-    return {
-      pages: [
-        {
-          header: {
-            description: strings.PropertyPaneDescription
-          },
-          groups: [
-            {
-              groupName: strings.BasicGroupName,
-              groupFields: [
-                PropertyPaneTextField('description', {
-                  label: strings.DescriptionFieldLabel
-                })
-              ]
-            }
-          ]
-        }
-      ]
-    };
+    return { pages: [] };
   }
 }

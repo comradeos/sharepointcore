@@ -1,0 +1,9 @@
+.page {
+  padding: 20px;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.content {
+  margin-top: 16px;
+}
