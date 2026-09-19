@@ -6,12 +6,18 @@ import {
   ValueFormatterParams
 } from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
-import { AgGridProvider, AgGridReact } from 'ag-grid-react';
+import {
+  AgGridProvider,
+  AgGridReact,
+  CustomCellRendererProps
+} from 'ag-grid-react';
+import { IconButton, TooltipHost } from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 import styles from './ServiceRequestsGrid.module.scss';
 
 // значення одного рядка таблиці після перетворення даних sharepoint
 interface IRequestGridRow {
+  request: IServiceRequest;
   id: number;
   title: string;
   category: string;
@@ -27,6 +33,14 @@ interface IRequestGridRow {
 // вхідні дані таблиці заявок
 interface IServiceRequestsGridProps {
   requests: IServiceRequest[];
+  onView: (request: IServiceRequest) => void;
+  onEdit: (request: IServiceRequest) => void;
+}
+
+// дії таблиці доступні клітинці через контекст ag grid
+interface IRequestGridContext {
+  onView: (request: IServiceRequest) => void;
+  onEdit: (request: IServiceRequest) => void;
 }
 
 const modules = [AllCommunityModule];
@@ -51,6 +65,7 @@ function toGridRow(request: IServiceRequest): IRequestGridRow {
   const parsedDueDate = Date.parse(request.DueDate);
 
   return {
+    request,
     id: request.Id,
     title: request.Title,
     category: request.Category?.Title ?? '',
@@ -64,6 +79,52 @@ function toGridRow(request: IServiceRequest): IRequestGridRow {
   };
 }
 
+// показує кнопки дій для одного рядка таблиці
+function RequestActionsRenderer(
+  props: CustomCellRendererProps<IRequestGridRow, undefined, IRequestGridContext>
+): React.ReactElement | undefined {
+  if (!props.data) {
+    return undefined;
+  }
+
+  // передає вибрану заявку обробнику сторінки
+  const handleView = (): void => {
+    props.context.onView(props.data?.request as IServiceRequest);
+  };
+
+  // передає вибрану заявку до форми редагування
+  const handleEdit = (): void => {
+    props.context.onEdit(props.data?.request as IServiceRequest);
+  };
+
+  return (
+    <div className={styles.actions}>
+      <TooltipHost
+        content="Переглянути"
+        styles={{ root: { display: 'flex', alignItems: 'center', height: '100%' } }}
+      >
+        <IconButton
+          className={styles.actionButton}
+          iconProps={{ iconName: 'RedEye' }}
+          ariaLabel="Переглянути"
+          onClick={handleView}
+        />
+      </TooltipHost>
+      <TooltipHost
+        content="Редагувати"
+        styles={{ root: { display: 'flex', alignItems: 'center', height: '100%' } }}
+      >
+        <IconButton
+          className={styles.actionButton}
+          iconProps={{ iconName: 'Edit' }}
+          ariaLabel="Редагувати"
+          onClick={handleEdit}
+        />
+      </TooltipHost>
+    </div>
+  );
+}
+
 // показує дату українською мовою без зміни числового значення для сортування
 function formatDueDate(params: ValueFormatterParams<IRequestGridRow, number>): string {
   return typeof params.value === 'number' ? dateFormatter.format(params.value) : '';
@@ -75,8 +136,22 @@ function formatEstimatedHours(params: ValueFormatterParams<IRequestGridRow, numb
 }
 
 const columnDefs: ColDef<IRequestGridRow>[] = [
-  { field: 'id', headerName: 'ID', width: 90 },
-  { field: 'title', headerName: 'Назва заявки', minWidth: 220, flex: 2 },
+  {
+    field: 'id',
+    headerName: 'ID',
+    width: 50,
+    pinned: 'left',
+    lockPinned: true,
+    suppressMovable: true
+  },
+  {
+    field: 'title',
+    headerName: 'Назва заявки',
+    width: 150,
+    pinned: 'left',
+    lockPinned: true,
+    suppressMovable: true
+  },
   { field: 'category', headerName: 'Категорія', minWidth: 160 },
   { field: 'subcategory', headerName: 'Підкатегорія', minWidth: 170 },
   { field: 'status', headerName: 'Статус', minWidth: 130 },
@@ -94,6 +169,17 @@ const columnDefs: ColDef<IRequestGridRow>[] = [
     headerName: 'Оцінка годин',
     minWidth: 140,
     valueFormatter: formatEstimatedHours
+  },
+  {
+    headerName: 'Дії',
+    width: 104,
+    minWidth: 104,
+    maxWidth: 104,
+    pinned: 'right',
+    sortable: false,
+    resizable: false,
+    suppressMovable: true,
+    cellRenderer: RequestActionsRenderer
   }
 ];
 
@@ -106,6 +192,7 @@ const defaultColDef: ColDef<IRequestGridRow> = {
 // відображає заявки в ag grid із сортуванням та українською локалізацією
 export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): React.ReactElement {
   const rows = props.requests.map(toGridRow);
+  const gridContext: IRequestGridContext = { onView: props.onView, onEdit: props.onEdit };
 
   return (
     <AgGridProvider modules={modules}>
@@ -115,6 +202,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           localeText={localeText}
+          context={gridContext}
           theme={themeQuartz}
           accentedSort={true}
         />

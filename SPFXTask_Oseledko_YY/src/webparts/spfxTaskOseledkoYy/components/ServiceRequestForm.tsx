@@ -23,6 +23,7 @@ import {
 import {
   IRequestCategory,
   IRequestSubcategory,
+  IServiceRequest,
   IServiceRequestDraft
 } from '../models/ServiceDeskModels';
 import styles from './ServiceRequestForm.module.scss';
@@ -30,6 +31,7 @@ import styles from './ServiceRequestForm.module.scss';
 // вхідні дані форми створення заявки
 export interface IServiceRequestFormProps {
   isOpen: boolean;
+  request?: IServiceRequest;
   onDismiss: () => void;
   categories: IRequestCategory[];
   subcategories: IRequestSubcategory[];
@@ -38,7 +40,7 @@ export interface IServiceRequestFormProps {
   onSubmit: (draft: IServiceRequestDraft) => Promise<void>;
 }
 
-// значення полів нової заявки до збереження
+// значення полів заявки до збереження
 interface IServiceRequestFormState {
   title: string;
   description: string;
@@ -64,7 +66,7 @@ interface IPeoplePickerPersona extends IPersonaProps {
   loginName?: string;
 }
 
-// помилки перевірки полів нової заявки
+// помилки перевірки полів заявки
 interface IServiceRequestFormErrors {
   title?: string;
   description?: string;
@@ -93,7 +95,38 @@ const priorityOptions: IDropdownOption[] = [
   { key: 'Високий', text: 'Високий' }
 ];
 
-// показує поля нової заявки у модальному вікні
+const allowedEmailDomain = '@ua.energy';
+
+// залишає у результатах пошуку користувачів з дозволеною поштою
+function filterUaEnergyUsers(results: IPersonaProps[]): IPersonaProps[] {
+  const filteredResults: IPersonaProps[] = [];
+
+  for (const result of results) {
+    const email = result.secondaryText?.trim().toLowerCase() ?? '';
+    if (email.endsWith(allowedEmailDomain)) {
+      filteredResults.push(result);
+    }
+  }
+
+  return filteredResults;
+}
+
+// перетворює дату sharepoint на локальне значення поля дати
+function toDateTimeLocal(value?: string): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+// показує поля заявки у модальному вікні
 export default class ServiceRequestForm extends React.Component<
   IServiceRequestFormProps,
   IServiceRequestFormState
@@ -101,20 +134,29 @@ export default class ServiceRequestForm extends React.Component<
   // задає початкові значення полів відповідно до схеми списку
   public constructor(props: IServiceRequestFormProps) {
     super(props);
+    const request = props.request;
     this.state = {
-      title: '',
-      description: '',
-      status: 'Нова',
-      priority: 'Середній',
-      requester: props.currentUserEmail
-        ? [{ text: props.currentUserEmail, secondaryText: props.currentUserEmail }]
+      title: request?.Title ?? '',
+      description: request?.Description ?? '',
+      categoryId: request?.CategoryId,
+      subcategoryId: request?.SubcategoryId,
+      status: request?.Status ?? 'Нова',
+      priority: request?.Priority ?? 'Середній',
+      requester: request
+        ? [{ id: String(request.Requester.Id), text: request.Requester.Title, secondaryText: request.Requester.EMail }]
+        : props.currentUserEmail
+          ? [{ text: props.currentUserEmail, secondaryText: props.currentUserEmail }]
+          : [],
+      assignee: request?.Assignee
+        ? [{ id: String(request.Assignee.Id), text: request.Assignee.Title, secondaryText: request.Assignee.EMail }]
         : [],
-      assignee: [],
-      plannedStart: '',
-      dueDate: '',
-      estimatedHours: '',
-      contactEmail: '',
-      requiresOnsiteVisit: false,
+      plannedStart: toDateTimeLocal(request?.PlannedStart ?? undefined),
+      dueDate: toDateTimeLocal(request?.DueDate ?? undefined),
+      estimatedHours: request?.EstimatedHours === null || request?.EstimatedHours === undefined
+        ? ''
+        : String(request.EstimatedHours),
+      contactEmail: request?.ContactEmail ?? '',
+      requiresOnsiteVisit: request?.RequiresOnsiteVisit ?? false,
       validationErrors: {},
       isSubmitting: false
     };
@@ -260,10 +302,14 @@ export default class ServiceRequestForm extends React.Component<
 
     if (requester.length === 0) {
       errors.requester = 'Оберіть заявника';
+    } else if (!this.hasAllowedEmailDomain(requester)) {
+      errors.requester = 'Пошта заявника повинна закінчуватися на @ua.energy';
     }
 
     if ((status === 'Вирішена' || status === 'Закрита') && assignee.length === 0) {
       errors.assignee = 'Оберіть виконавця для завершеної заявки';
+    } else if (assignee.length > 0 && !this.hasAllowedEmailDomain(assignee)) {
+      errors.assignee = 'Пошта виконавця повинна закінчуватися на @ua.energy';
     }
 
     const plannedStartTime = plannedStart ? new Date(plannedStart).getTime() : undefined;
@@ -320,6 +366,12 @@ export default class ServiceRequestForm extends React.Component<
     return person.loginName || person.secondaryText || String(person.id || fallback);
   }
 
+  // перевіряє поштовий домен вибраного користувача
+  private hasAllowedEmailDomain(people: IPersonaProps[]): boolean {
+    const identity = this.getPersonIdentity(people).trim().toLowerCase();
+    return identity.endsWith(allowedEmailDomain);
+  }
+
   // готує незалежну від інтерфейсу модель для сервісу sharepoint
   private createDraft(): IServiceRequestDraft {
     const {
@@ -346,7 +398,7 @@ export default class ServiceRequestForm extends React.Component<
     };
   }
 
-  // перевіряє форму та передає заявку для створення
+  // перевіряє форму та передає заявку для збереження
   private readonly handleSubmit = async (): Promise<void> => {
     const validationErrors = this.validateForm();
     if (Object.keys(validationErrors).length > 0) {
@@ -372,14 +424,14 @@ export default class ServiceRequestForm extends React.Component<
         isSubmitting: false,
         submitError: error instanceof Error
           ? error.message
-          : 'Не вдалося створити заявку'
+          : 'Не вдалося зберегти заявку'
       });
     }
   };
 
   // показує поля форми та обмежує підкатегорії вибраною категорією
   public render(): React.ReactElement<IServiceRequestFormProps> {
-    const { categories, subcategories, peoplePickerContext, currentUserEmail } = this.props;
+    const { categories, subcategories, peoplePickerContext, currentUserEmail, request } = this.props;
     const {
       title, description, categoryId, subcategoryId, status, priority,
       plannedStart, dueDate, estimatedHours, contactEmail, requiresOnsiteVisit,
@@ -412,7 +464,9 @@ export default class ServiceRequestForm extends React.Component<
         titleAriaId="service-request-form-title"
       >
         <div className={styles.header}>
-          <h2 id="service-request-form-title" className={styles.title}>Нова сервісна заявка</h2>
+          <h2 id="service-request-form-title" className={styles.title}>
+            {request ? 'Редагування сервісної заявки' : 'Нова сервісна заявка'}
+          </h2>
           <IconButton
             iconProps={{ iconName: 'Cancel' }}
             ariaLabel="Закрити"
@@ -441,7 +495,10 @@ export default class ServiceRequestForm extends React.Component<
             placeholder="Оберіть заявника"
             personSelectionLimit={1}
             principalTypes={[PrincipalType.User]}
-            defaultSelectedUsers={currentUserEmail ? [currentUserEmail] : []}
+            defaultSelectedUsers={request?.Requester?.EMail
+              ? [request.Requester.EMail]
+              : currentUserEmail ? [currentUserEmail] : []}
+            resultFilter={filterUaEnergyUsers}
             ensureUser
             required
             errorMessage={validationErrors.requester}
@@ -453,6 +510,8 @@ export default class ServiceRequestForm extends React.Component<
             placeholder="Оберіть виконавця"
             personSelectionLimit={1}
             principalTypes={[PrincipalType.User]}
+            defaultSelectedUsers={request?.Assignee?.EMail ? [request.Assignee.EMail] : []}
+            resultFilter={filterUaEnergyUsers}
             ensureUser
             errorMessage={validationErrors.assignee}
             onChange={this.handleAssigneeChange}
@@ -464,7 +523,7 @@ export default class ServiceRequestForm extends React.Component<
           <Toggle label="Потрібен виїзд" checked={requiresOnsiteVisit} onText="Так" offText="Ні" onChange={this.handleOnsiteChange} />
         </Stack>
         <div className={styles.footer}>
-          <PrimaryButton text="Створити" onClick={this.handleSubmit} disabled={isSubmitting} />
+          <PrimaryButton text={request ? 'Зберегти' : 'Створити'} onClick={this.handleSubmit} disabled={isSubmitting} />
           <DefaultButton text="Закрити" onClick={this.props.onDismiss} disabled={isSubmitting} />
           {isSubmitting && (
             <Spinner size={SpinnerSize.small} label="Зберігаємо заявку" />

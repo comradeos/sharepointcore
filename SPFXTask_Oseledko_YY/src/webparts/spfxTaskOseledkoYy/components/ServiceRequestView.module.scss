@@ -1,0 +1,78 @@
+.modal {
+  width: 760px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 12px;
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px 20px;
+}
+
+.field {
+  min-width: 0;
+}
+
+.wideField {
+  grid-column: 1 / -1;
+}
+
+.value {
+  display: block;
+  min-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  flex-shrink: 0;
+  padding: 12px 24px 20px;
+  border-top: 1px solid #edebe9;
+}
+
+@media (max-width: 600px) {
+  .header {
+    padding: 16px 16px 10px;
+  }
+
+  .body {
+    grid-template-columns: 1fr;
+    padding: 0 16px 16px;
+  }
+
+  .wideField {
+    grid-column: auto;
+  }
+
+  .footer {
+    padding: 12px 16px 16px;
+  }
+}

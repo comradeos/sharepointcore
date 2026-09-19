@@ -12,17 +12,21 @@ import styles from './ServiceRequestsPage.module.scss';
 import { IServiceRequestsPageProps } from './IServiceRequestsPageProps';
 import {
   IServiceDeskData,
+  IServiceRequest,
   IServiceRequestDraft
 } from '../models/ServiceDeskModels';
 import ServiceDeskService from '../services/ServiceDeskService';
 import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
+import ServiceRequestView from './ServiceRequestView';
 
 // стан екрана сервісних заявок
 interface IServiceRequestsPageState {
   data?: IServiceDeskData;
   isLoading: boolean;
   isCreateOpen: boolean;
+  selectedRequest?: IServiceRequest;
+  editingRequest?: IServiceRequest;
   error?: string;
   success?: string;
 }
@@ -75,7 +79,12 @@ export default class ServiceRequestsPage extends React.Component<
 
   // відкриває форму створення нової заявки
   private readonly handleOpenCreate = (): void => {
-    this.setState({ isCreateOpen: true, success: undefined });
+    this.setState({
+      isCreateOpen: true,
+      selectedRequest: undefined,
+      editingRequest: undefined,
+      success: undefined
+    });
   };
 
   // закриває форму створення заявки
@@ -93,9 +102,55 @@ export default class ServiceRequestsPage extends React.Component<
     this.loadData();
   };
 
+  // відкриває вибрану заявку у режимі перегляду
+  private readonly handleOpenView = (request: IServiceRequest): void => {
+    this.setState({
+      selectedRequest: request,
+      editingRequest: undefined,
+      success: undefined
+    });
+  };
+
+  // закриває вікно перегляду заявки
+  private readonly handleCloseView = (): void => {
+    this.setState({ selectedRequest: undefined });
+  };
+
+  // відкриває вибрану заявку у режимі редагування
+  private readonly handleOpenEdit = (request: IServiceRequest): void => {
+    this.setState({
+      isCreateOpen: false,
+      selectedRequest: undefined,
+      editingRequest: request,
+      success: undefined
+    });
+  };
+
+  // закриває форму редагування заявки
+  private readonly handleCloseEdit = (): void => {
+    this.setState({ editingRequest: undefined });
+  };
+
+  // оновлює заявку та перезавантажує таблицю після успішної відповіді
+  private readonly handleUpdateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
+    const { editingRequest } = this.state;
+    if (!editingRequest) {
+      throw new Error('Не вдалося визначити заявку для оновлення');
+    }
+
+    await this.service.updateRequest(editingRequest.Id, draft);
+    this.setState({
+      success: 'Заявку успішно оновлено',
+      error: undefined
+    });
+    this.loadData();
+  };
+
   // відображає стан завантаження кількість заявок і таблицю
   public render(): React.ReactElement<IServiceRequestsPageProps> {
-    const { data, error, success, isLoading, isCreateOpen } = this.state;
+    const {
+      data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest
+    } = this.state;
 
     return (
       <section className={styles.page}>
@@ -122,7 +177,11 @@ export default class ServiceRequestsPage extends React.Component<
         {data && (
           <div className={styles.content}>
             <Text variant="medium">Усього заявок: {data.requests.length}</Text>
-            <ServiceRequestsGrid requests={data.requests} />
+            <ServiceRequestsGrid
+              requests={data.requests}
+              onView={this.handleOpenView}
+              onEdit={this.handleOpenEdit}
+            />
             {isCreateOpen && (
               <ServiceRequestForm
                 isOpen={isCreateOpen}
@@ -132,6 +191,24 @@ export default class ServiceRequestsPage extends React.Component<
                 peoplePickerContext={this.props.peoplePickerContext}
                 currentUserEmail={this.props.currentUserEmail}
                 onSubmit={this.handleCreateRequest}
+              />
+            )}
+            {selectedRequest && (
+              <ServiceRequestView
+                request={selectedRequest}
+                onDismiss={this.handleCloseView}
+              />
+            )}
+            {editingRequest && (
+              <ServiceRequestForm
+                isOpen
+                request={editingRequest}
+                onDismiss={this.handleCloseEdit}
+                categories={data.categories}
+                subcategories={data.subcategories}
+                peoplePickerContext={this.props.peoplePickerContext}
+                currentUserEmail={this.props.currentUserEmail}
+                onSubmit={this.handleUpdateRequest}
               />
             )}
           </div>

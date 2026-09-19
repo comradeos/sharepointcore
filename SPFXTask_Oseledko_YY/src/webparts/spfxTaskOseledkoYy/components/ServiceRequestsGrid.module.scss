@@ -3,3 +3,16 @@
   height: 520px;
   margin-top: 12px;
 }
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.actionButton {
+  width: 32px;
+  height: 32px;
+}

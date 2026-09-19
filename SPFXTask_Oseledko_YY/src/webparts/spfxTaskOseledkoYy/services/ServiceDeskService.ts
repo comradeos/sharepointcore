@@ -4,7 +4,8 @@ import {
   IRequestSubcategory,
   IServiceDeskData,
   IServiceRequest,
-  IServiceRequestDraft
+  IServiceRequestDraft,
+  SharePointNullable
 } from '../models/ServiceDeskModels';
 
 // сторінка результатів sharepoint rest api без службових метаданих
@@ -16,6 +17,23 @@ interface IODataPage<T> {
 // користувач якого повертає метод ensureuser
 interface IEnsuredUser {
   Id: number;
+}
+
+// дані заявки у форматі внутрішніх полів списку sharepoint
+interface IServiceRequestPayload {
+  Title: string;
+  Description: string;
+  CategoryId: number;
+  SubcategoryId: number;
+  Status: string;
+  Priority: string;
+  RequesterId: number;
+  AssigneeId: SharePointNullable<number>;
+  PlannedStart: SharePointNullable<string>;
+  DueDate: string;
+  EstimatedHours: SharePointNullable<number>;
+  ContactEmail: SharePointNullable<string>;
+  RequiresOnsiteVisit: boolean;
 }
 
 // читає заявки та довідники із сайту де розміщена вебчастина
@@ -59,14 +77,7 @@ export default class ServiceDeskService {
 
   // створює нову заявку у списку servicerequests
   public async createRequest(draft: IServiceRequestDraft): Promise<void> {
-    const requesterIdPromise = this.ensureUser(draft.requesterIdentity);
-    const assigneeIdPromise = draft.assigneeIdentity
-      ? this.ensureUser(draft.assigneeIdentity)
-      : Promise.resolve<number | null>(null);
-    const [requesterId, assigneeId] = await Promise.all([
-      requesterIdPromise,
-      assigneeIdPromise
-    ]);
+    const payload = await this.createRequestPayload(draft);
     const listUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/lists/getbytitle('ServiceRequests')/items`;
     const response = await this.client.post(
       listUrl,
@@ -76,27 +87,64 @@ export default class ServiceDeskService {
           Accept: 'application/json;odata=nometadata',
           'Content-Type': 'application/json;odata=nometadata'
         },
-        body: JSON.stringify({
-          Title: draft.title,
-          Description: draft.description,
-          CategoryId: draft.categoryId,
-          SubcategoryId: draft.subcategoryId,
-          Status: draft.status,
-          Priority: draft.priority,
-          RequesterId: requesterId,
-          AssigneeId: assigneeId,
-          PlannedStart: draft.plannedStart ? new Date(draft.plannedStart).toISOString() : null,
-          DueDate: new Date(draft.dueDate).toISOString(),
-          EstimatedHours: draft.estimatedHours ?? null,
-          ContactEmail: draft.contactEmail ?? null,
-          RequiresOnsiteVisit: draft.requiresOnsiteVisit
-        })
+        body: JSON.stringify(payload)
       }
     );
 
     if (!response.ok) {
       throw new Error(`Не вдалося створити заявку (HTTP ${response.status})`);
     }
+  }
+
+  // оновлює наявну заявку у списку servicerequests
+  public async updateRequest(itemId: number, draft: IServiceRequestDraft): Promise<void> {
+    const payload = await this.createRequestPayload(draft);
+    const itemUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/lists/getbytitle('ServiceRequests')/items(${itemId})`;
+    const response = await this.client.post(
+      itemUrl,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata',
+          'IF-MATCH': '*',
+          'X-HTTP-Method': 'MERGE'
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Не вдалося оновити заявку (HTTP ${response.status})`);
+    }
+  }
+
+  // готує поля заявки та визначає ідентифікатори користувачів
+  private async createRequestPayload(draft: IServiceRequestDraft): Promise<IServiceRequestPayload> {
+    const requesterIdPromise = this.ensureUser(draft.requesterIdentity);
+    const assigneeIdPromise = draft.assigneeIdentity
+      ? this.ensureUser(draft.assigneeIdentity)
+      : Promise.resolve<number | null>(null);
+    const [requesterId, assigneeId] = await Promise.all([
+      requesterIdPromise,
+      assigneeIdPromise
+    ]);
+
+    return {
+      Title: draft.title,
+      Description: draft.description,
+      CategoryId: draft.categoryId,
+      SubcategoryId: draft.subcategoryId,
+      Status: draft.status,
+      Priority: draft.priority,
+      RequesterId: requesterId,
+      AssigneeId: assigneeId,
+      PlannedStart: draft.plannedStart ? new Date(draft.plannedStart).toISOString() : null,
+      DueDate: new Date(draft.dueDate).toISOString(),
+      EstimatedHours: draft.estimatedHours ?? null,
+      ContactEmail: draft.contactEmail ?? null,
+      RequiresOnsiteVisit: draft.requiresOnsiteVisit
+    };
   }
 
   // додає користувача до сайту та повертає його числовий ідентифікатор
