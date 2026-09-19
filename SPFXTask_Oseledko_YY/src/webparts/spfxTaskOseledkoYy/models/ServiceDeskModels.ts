@@ -50,6 +50,23 @@ export interface IServiceRequest {
   RequiresOnsiteVisit: boolean;
 }
 
+// перевірені дані форми для створення заявки
+export interface IServiceRequestDraft {
+  title: string;
+  description: string;
+  categoryId: number;
+  subcategoryId: number;
+  status: string;
+  priority: string;
+  requesterIdentity: string;
+  assigneeIdentity?: string;
+  plannedStart?: string;
+  dueDate: string;
+  estimatedHours?: number;
+  contactEmail?: string;
+  requiresOnsiteVisit: boolean;
+}
+
 // дані потрібні для першого відображення вебчастини
 export interface IServiceDeskData {
   categories: IRequestCategory[];

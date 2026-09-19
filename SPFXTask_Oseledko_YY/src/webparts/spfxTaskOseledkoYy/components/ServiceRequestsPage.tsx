@@ -10,7 +10,10 @@ import {
 } from '@fluentui/react';
 import styles from './ServiceRequestsPage.module.scss';
 import { IServiceRequestsPageProps } from './IServiceRequestsPageProps';
-import { IServiceDeskData } from '../models/ServiceDeskModels';
+import {
+  IServiceDeskData,
+  IServiceRequestDraft
+} from '../models/ServiceDeskModels';
 import ServiceDeskService from '../services/ServiceDeskService';
 import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
@@ -21,6 +24,7 @@ interface IServiceRequestsPageState {
   isLoading: boolean;
   isCreateOpen: boolean;
   error?: string;
+  success?: string;
 }
 
 // показує таблицю заявок із даними трьох списків sharepoint
@@ -65,12 +69,13 @@ export default class ServiceRequestsPage extends React.Component<
 
   // повторює запити після натискання кнопки оновлення
   private readonly handleRefresh = (): void => {
+    this.setState({ success: undefined });
     this.loadData();
   };
 
   // відкриває форму створення нової заявки
   private readonly handleOpenCreate = (): void => {
-    this.setState({ isCreateOpen: true });
+    this.setState({ isCreateOpen: true, success: undefined });
   };
 
   // закриває форму створення заявки
@@ -78,9 +83,19 @@ export default class ServiceRequestsPage extends React.Component<
     this.setState({ isCreateOpen: false });
   };
 
+  // створює заявку та оновлює таблицю після успішної відповіді
+  private readonly handleCreateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
+    await this.service.createRequest(draft);
+    this.setState({
+      success: 'Заявку успішно створено',
+      error: undefined
+    });
+    this.loadData();
+  };
+
   // відображає стан завантаження кількість заявок і таблицю
   public render(): React.ReactElement<IServiceRequestsPageProps> {
-    const { data, error, isLoading, isCreateOpen } = this.state;
+    const { data, error, success, isLoading, isCreateOpen } = this.state;
 
     return (
       <section className={styles.page}>
@@ -98,6 +113,11 @@ export default class ServiceRequestsPage extends React.Component<
 
         {isLoading && <Spinner label="Завантажуємо списки..." />}
         {error && <MessageBar messageBarType={MessageBarType.error}>{error}</MessageBar>}
+        {success && (
+          <MessageBar className={styles.successMessage} messageBarType={MessageBarType.success}>
+            {success}
+          </MessageBar>
+        )}
 
         {data && (
           <div className={styles.content}>
@@ -111,6 +131,7 @@ export default class ServiceRequestsPage extends React.Component<
                 subcategories={data.subcategories}
                 peoplePickerContext={this.props.peoplePickerContext}
                 currentUserEmail={this.props.currentUserEmail}
+                onSubmit={this.handleCreateRequest}
               />
             )}
           </div>

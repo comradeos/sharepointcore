@@ -3,13 +3,19 @@ import {
   IRequestCategory,
   IRequestSubcategory,
   IServiceDeskData,
-  IServiceRequest
+  IServiceRequest,
+  IServiceRequestDraft
 } from '../models/ServiceDeskModels';
 
 // сторінка результатів sharepoint rest api без службових метаданих
 interface IODataPage<T> {
   value: T[];
   '@odata.nextLink'?: string;
+}
+
+// користувач якого повертає метод ensureuser
+interface IEnsuredUser {
+  Id: number;
 }
 
 // читає заявки та довідники із сайту де розміщена вебчастина
@@ -49,6 +55,75 @@ export default class ServiceDeskService {
     ]);
 
     return { categories, subcategories, requests };
+  }
+
+  // створює нову заявку у списку servicerequests
+  public async createRequest(draft: IServiceRequestDraft): Promise<void> {
+    const requesterIdPromise = this.ensureUser(draft.requesterIdentity);
+    const assigneeIdPromise = draft.assigneeIdentity
+      ? this.ensureUser(draft.assigneeIdentity)
+      : Promise.resolve<number | null>(null);
+    const [requesterId, assigneeId] = await Promise.all([
+      requesterIdPromise,
+      assigneeIdPromise
+    ]);
+    const listUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/lists/getbytitle('ServiceRequests')/items`;
+    const response = await this.client.post(
+      listUrl,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata'
+        },
+        body: JSON.stringify({
+          Title: draft.title,
+          Description: draft.description,
+          CategoryId: draft.categoryId,
+          SubcategoryId: draft.subcategoryId,
+          Status: draft.status,
+          Priority: draft.priority,
+          RequesterId: requesterId,
+          AssigneeId: assigneeId,
+          PlannedStart: draft.plannedStart ? new Date(draft.plannedStart).toISOString() : null,
+          DueDate: new Date(draft.dueDate).toISOString(),
+          EstimatedHours: draft.estimatedHours ?? null,
+          ContactEmail: draft.contactEmail ?? null,
+          RequiresOnsiteVisit: draft.requiresOnsiteVisit
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Не вдалося створити заявку (HTTP ${response.status})`);
+    }
+  }
+
+  // додає користувача до сайту та повертає його числовий ідентифікатор
+  private async ensureUser(identity: string): Promise<number> {
+    const ensureUserUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/ensureuser`;
+    const response = await this.client.post(
+      ensureUserUrl,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'Content-Type': 'application/json;odata=nometadata'
+        },
+        body: JSON.stringify({ logonName: identity })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Не вдалося визначити користувача (HTTP ${response.status})`);
+    }
+
+    const user = await response.json() as IEnsuredUser;
+    if (!Number.isInteger(user.Id)) {
+      throw new Error('SharePoint повернув некоректний ідентифікатор користувача');
+    }
+
+    return user.Id;
   }
 
   // читає всі сторінки списку щоб отримати кожен елемент
