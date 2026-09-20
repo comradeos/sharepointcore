@@ -206,29 +206,25 @@ const columnDefs: ColDef<IRequestGridRow>[] = [
     field: 'category',
     headerName: 'Категорія',
     minWidth: 160,
-    filter: ServiceRequestChoiceFilter,
-    filterParams: { allowMultiple: false }
+    filter: ServiceRequestChoiceFilter
   },
   {
     field: 'subcategory',
     headerName: 'Підкатегорія',
     minWidth: 170,
-    filter: ServiceRequestChoiceFilter,
-    filterParams: { allowMultiple: false }
+    filter: ServiceRequestChoiceFilter
   },
   {
     field: 'status',
     headerName: 'Статус',
     minWidth: 130,
-    filter: ServiceRequestChoiceFilter,
-    filterParams: { allowMultiple: true }
+    filter: ServiceRequestChoiceFilter
   },
   {
     field: 'priority',
     headerName: 'Пріоритет',
     minWidth: 130,
-    filter: ServiceRequestChoiceFilter,
-    filterParams: { allowMultiple: false }
+    filter: ServiceRequestChoiceFilter
   },
   {
     field: 'requester',

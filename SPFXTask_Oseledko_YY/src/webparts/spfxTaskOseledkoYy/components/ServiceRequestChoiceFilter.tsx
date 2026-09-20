@@ -1,9 +1,7 @@
 import * as React from 'react';
 import {
   Checkbox,
-  ChoiceGroup,
   DefaultButton,
-  IChoiceGroupOption,
   Stack,
   Text
 } from '@fluentui/react';
@@ -14,15 +12,6 @@ import styles from './ServiceRequestChoiceFilter.module.scss';
 // модель вибраних значень фільтра колонки
 interface IRequestChoiceFilterModel {
   values: string[];
-}
-
-// параметри фільтра для одиночного або множинного вибору
-interface IServiceRequestChoiceFilterProps extends CustomFilterProps<
-  unknown,
-  unknown,
-  IRequestChoiceFilterModel
-> {
-  allowMultiple?: boolean;
 }
 
 const ukrainianCollator = new Intl.Collator('uk-UA');
@@ -46,7 +35,7 @@ function getFilterOptions(props: CustomFilterProps): string[] {
 
 // показує множинний вибір значень у меню фільтра колонки
 export default function ServiceRequestChoiceFilter(
-  props: IServiceRequestChoiceFilterProps
+  props: CustomFilterProps<unknown, unknown, IRequestChoiceFilterModel>
 ): React.ReactElement {
   const selectedValues = props.model?.values ?? [];
   const options = getFilterOptions(props);
@@ -64,10 +53,7 @@ export default function ServiceRequestChoiceFilter(
   useGridFilter({ doesFilterPass });
 
   const optionControls: React.ReactElement[] = [];
-  const singleChoiceOptions: IChoiceGroupOption[] = [];
   for (const option of options) {
-    singleChoiceOptions.push({ key: option, text: option });
-
     // змінює вибір одного значення фільтра
     const handleOptionChange = (
       _event?: React.FormEvent<HTMLElement>,
@@ -98,14 +84,6 @@ export default function ServiceRequestChoiceFilter(
     );
   }
 
-  // встановлює одне вибране значення фільтра
-  const handleSingleChoiceChange = (
-    _event?: React.FormEvent<HTMLElement | HTMLInputElement>,
-    option?: IChoiceGroupOption
-  ): void => {
-    props.onModelChange(option ? { values: [option.key] } : null);
-  };
-
   // очищає всі вибрані значення поточної колонки
   const handleClear = (): void => {
     props.onModelChange(null);
@@ -116,15 +94,7 @@ export default function ServiceRequestChoiceFilter(
       <Stack tokens={{ childrenGap: 8 }}>
         <Text variant="smallPlus">Оберіть значення</Text>
         <div className={styles.options}>
-          {props.allowMultiple ? (
-            <Stack tokens={{ childrenGap: 8 }}>{optionControls}</Stack>
-          ) : (
-            <ChoiceGroup
-              options={singleChoiceOptions}
-              selectedKey={selectedValues[0]}
-              onChange={handleSingleChoiceChange}
-            />
-          )}
+          <Stack tokens={{ childrenGap: 8 }}>{optionControls}</Stack>
         </div>
         <DefaultButton
           className={styles.clearButton}

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { DefaultButton } from '@fluentui/react';
+import { DefaultButton, Stack, TextField } from '@fluentui/react';
 import {
   IRequestCategory,
   IRequestSubcategory,
@@ -11,7 +11,7 @@ interface IServiceRequestGeneratorProps {
   categories: IRequestCategory[];
   subcategories: IRequestSubcategory[];
   disabled: boolean;
-  onGenerate: (draft: IServiceRequestDraft) => Promise<void>;
+  onGenerate: (drafts: IServiceRequestDraft[]) => Promise<void>;
 }
 
 // повязана пара категорії та підкатегорії
@@ -35,7 +35,7 @@ const generatedDescriptions = [
   'Потрібна консультація та технічна перевірка',
   'Необхідно виконати діагностику та запропонувати рішення'
 ];
-const generatedStatuses = ['Нова', 'В роботі', 'Вирішена', 'Закрита'];
+const generatedStatuses = ['Нова', 'В роботі'];
 const generatedPriorities = ['Низький', 'Середній', 'Високий'];
 
 // повертає випадковий елемент непорожнього масиву
@@ -46,6 +46,18 @@ function getRandomItem<T>(items: T[]): T {
 // повертає випадкове ціле число у заданому діапазоні
 function getRandomInteger(minimum: number, maximum: number): number {
   return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
+}
+
+// повертає коректну кількість заявок або позначає помилкове значення
+function parseGenerationCount(value: string): number | undefined {
+  if (!value.trim()) {
+    return 1;
+  }
+
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 1 && count <= 1000
+    ? count
+    : undefined;
 }
 
 // збирає активні повязані категорії та підкатегорії
@@ -100,28 +112,61 @@ export default function ServiceRequestGenerator(
   props: IServiceRequestGeneratorProps
 ): React.ReactElement {
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const [countText, setCountText] = React.useState('');
   const categoryPairs = getCategoryPairs(props.categories, props.subcategories);
+  const generationCount = parseGenerationCount(countText);
 
-  // створює одну випадкову заявку після натискання кнопки
+  // зберігає введену кількість заявок для генерації
+  const handleCountChange = (
+    _event?: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>,
+    value?: string
+  ): void => {
+    setCountText(value || '');
+  };
+
+  // створює задану кількість випадкових заявок після натискання кнопки
   const handleGenerate = async (): Promise<void> => {
-    if (categoryPairs.length === 0) {
+    if (categoryPairs.length === 0 || generationCount === undefined) {
       return;
+    }
+
+    const drafts: IServiceRequestDraft[] = [];
+    for (let index = 0; index < generationCount; index += 1) {
+      drafts.push(createRandomDraft(getRandomItem(categoryPairs)));
     }
 
     setIsGenerating(true);
     try {
-      await props.onGenerate(createRandomDraft(getRandomItem(categoryPairs)));
+      await props.onGenerate(drafts);
     } finally {
       setIsGenerating(false);
     }
   };
 
   return (
-    <DefaultButton
-      text={isGenerating ? 'Генеруємо' : 'Згенерувати'}
-      iconProps={{ iconName: 'TestBeaker' }}
-      onClick={handleGenerate}
-      disabled={props.disabled || isGenerating || categoryPairs.length === 0}
-    />
+    <Stack horizontal verticalAlign="start" tokens={{ childrenGap: 8 }}>
+      <TextField
+        type="number"
+        min={1}
+        max={1000}
+        step={1}
+        value={countText}
+        placeholder="Кількість"
+        ariaLabel="Кількість заявок"
+        title="Кількість заявок від 1 до 1000"
+        styles={{ root: { width: 100 } }}
+        errorMessage={generationCount === undefined ? 'Від 1 до 1000' : undefined}
+        disabled={props.disabled || isGenerating}
+        onChange={handleCountChange}
+      />
+      <DefaultButton
+        iconProps={{ iconName: 'AddTo' }}
+        ariaLabel={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
+        title={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
+        styles={{ root: { width: 70, minWidth: 70 } }}
+        onClick={handleGenerate}
+        disabled={props.disabled || isGenerating || categoryPairs.length === 0 || generationCount === undefined}
+      />
+    </Stack>
   );
 }

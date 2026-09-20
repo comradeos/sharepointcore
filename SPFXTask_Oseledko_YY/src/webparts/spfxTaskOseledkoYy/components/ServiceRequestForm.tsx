@@ -72,6 +72,7 @@ interface IServiceRequestFormErrors {
   description?: string;
   category?: string;
   subcategory?: string;
+  status?: string;
   requester?: string;
   assignee?: string;
   plannedStart?: string;
@@ -198,7 +199,7 @@ export default class ServiceRequestForm extends React.Component<
   // зберігає вибраний статус у стані форми
   private readonly handleStatusChange = (_event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption): void => {
     if (option) {
-      this.clearValidation('assignee');
+      this.clearValidation('status', 'assignee');
       this.setState({ status: String(option.key) });
     }
   };
@@ -298,6 +299,10 @@ export default class ServiceRequestForm extends React.Component<
       if (!isRelatedSubcategory) {
         errors.subcategory = 'Підкатегорія не належить обраній категорії';
       }
+    }
+
+    if (!this.props.request && (status === 'Вирішена' || status === 'Закрита')) {
+      errors.status = 'Нову заявку не можна створити із завершеним статусом';
     }
 
     if (requester.length === 0) {
@@ -439,6 +444,7 @@ export default class ServiceRequestForm extends React.Component<
     } = this.state;
     const categoryOptions: IDropdownOption[] = [];
     const subcategoryOptions: IDropdownOption[] = [];
+    const availableStatusOptions = request ? statusOptions : statusOptions.slice(0, 2);
     const minimumDateTime = this.getMinimumDateTimeValue();
 
     for (const category of categories) {
@@ -491,7 +497,7 @@ export default class ServiceRequestForm extends React.Component<
           <TextField label="Опис" required multiline rows={4} value={description} errorMessage={validationErrors.description} onChange={this.handleDescriptionChange} />
           <Dropdown label="Категорія" required placeholder="Оберіть категорію" options={categoryOptions} selectedKey={categoryId} errorMessage={validationErrors.category} onChange={this.handleCategoryChange} />
           <Dropdown label="Підкатегорія" required placeholder="Оберіть підкатегорію" options={subcategoryOptions} selectedKey={subcategoryId} errorMessage={validationErrors.subcategory} onChange={this.handleSubcategoryChange} disabled={categoryId === undefined} />
-          <Dropdown label="Статус" required options={statusOptions} selectedKey={status} onChange={this.handleStatusChange} />
+          <Dropdown label="Статус" required options={availableStatusOptions} selectedKey={status} errorMessage={validationErrors.status} onChange={this.handleStatusChange} />
           <Dropdown label="Пріоритет" required options={priorityOptions} selectedKey={priority} onChange={this.handlePriorityChange} />
           <PeoplePicker
             context={peoplePickerContext}

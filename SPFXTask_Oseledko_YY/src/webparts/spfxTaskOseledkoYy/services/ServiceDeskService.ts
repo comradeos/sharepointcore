@@ -38,6 +38,8 @@ interface IServiceRequestPayload {
 
 // читає заявки та довідники із сайту де розміщена вебчастина
 export default class ServiceDeskService {
+  private readonly userIdCache = new Map<string, Promise<number>>();
+
   // зберігає клієнт spfx та адресу поточного сайту для всіх запитів
   public constructor(
     private readonly client: SPHttpClient,
@@ -169,6 +171,24 @@ export default class ServiceDeskService {
 
   // додає користувача до сайту та повертає його числовий ідентифікатор
   private async ensureUser(identity: string): Promise<number> {
+    const cacheKey = identity.trim().toLowerCase();
+    let userIdPromise = this.userIdCache.get(cacheKey);
+
+    if (!userIdPromise) {
+      userIdPromise = this.requestUserId(identity);
+      this.userIdCache.set(cacheKey, userIdPromise);
+    }
+
+    try {
+      return await userIdPromise;
+    } catch (error) {
+      this.userIdCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  // виконує запит sharepoint для визначення ідентифікатора користувача
+  private async requestUserId(identity: string): Promise<number> {
     const ensureUserUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/ensureuser`;
     const response = await this.client.post(
       ensureUserUrl,

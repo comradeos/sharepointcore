@@ -27,7 +27,7 @@
 | Description | Опис | Multiple lines of text (plain text) | Так | Не порожній після обрізання пробілів. |
 | Category | Категорія | Lookup (single) | Так | Посилання на RequestCategories.Title. |
 | Subcategory | Підкатегорія | Lookup (single) | Так | Посилання на RequestSubcategories.Title; належить обраній категорії. |
-| Status | Статус | Choice (single) | Так | Нова / В роботі / Вирішена / Закрита; за замовчуванням Нова. |
+| Status | Статус | Choice (single) | Так | Під час створення Нова або В роботі; під час редагування також Вирішена або Закрита; за замовчуванням Нова. |
 | Priority | Пріоритет | Choice (single) | Так | Низький / Середній / Високий; за замовчуванням Середній. |
 | Requester | Заявник | Person or Group (person, single) | Так | За замовчуванням поточний користувач. |
 | Assignee | Виконавець | Person or Group (person, single) | Умовно | Обов'язковий для статусів Вирішена та Закрита. |
@@ -61,8 +61,7 @@
 | Тип фільтра | Поле |
 | --- | --- |
 | Текстовий | Title, Description |
-| Одиночний вибір | Category або Priority |
-| Множинний вибір | Status |
+| Множинний вибір | Category, Subcategory, Status, Priority |
 | Дата | DueDate |
 | Числовий | EstimatedHours |
 

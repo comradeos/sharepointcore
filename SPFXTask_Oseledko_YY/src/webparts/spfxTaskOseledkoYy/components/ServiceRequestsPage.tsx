@@ -108,10 +108,26 @@ export default class ServiceRequestsPage extends React.Component<
     this.loadData();
   };
 
-  // створює тестову заявку та показує помилку генерації
-  private readonly handleGenerateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
+  // створює тестові заявки групами та один раз оновлює таблицю
+  private readonly handleGenerateRequest = async (drafts: IServiceRequestDraft[]): Promise<void> => {
     try {
-      await this.handleCreateRequest(draft);
+      const batchSize = 10;
+      for (let startIndex = 0; startIndex < drafts.length; startIndex += batchSize) {
+        const createRequests: Array<Promise<void>> = [];
+        const batchEnd = Math.min(startIndex + batchSize, drafts.length);
+
+        for (let draftIndex = startIndex; draftIndex < batchEnd; draftIndex += 1) {
+          createRequests.push(this.service.createRequest(drafts[draftIndex]));
+        }
+
+        await Promise.all(createRequests);
+      }
+
+      this.setState({
+        success: `Створено заявок: ${drafts.length}`,
+        error: undefined
+      });
+      this.loadData();
     } catch (error) {
       this.setState({
         success: undefined,
@@ -234,11 +250,6 @@ export default class ServiceRequestsPage extends React.Component<
         >
           <Text className={styles.pageTitle} variant="xLarge">Сервісні заявки</Text>
           <Stack className={styles.headerActions} horizontal wrap tokens={{ childrenGap: 8 }}>
-            <PrimaryButton
-              text="Створити заявку"
-              onClick={this.handleOpenCreate}
-              disabled={!data || isLoading}
-            />
             {data && (
               <ServiceRequestGenerator
                 categories={data.categories}
@@ -248,6 +259,11 @@ export default class ServiceRequestsPage extends React.Component<
               />
             )}
             <DefaultButton text="Оновити" onClick={this.handleRefresh} disabled={isLoading} />
+            <PrimaryButton
+              text="Створити"
+              onClick={this.handleOpenCreate}
+              disabled={!data || isLoading}
+            />
           </Stack>
         </Stack>
 
