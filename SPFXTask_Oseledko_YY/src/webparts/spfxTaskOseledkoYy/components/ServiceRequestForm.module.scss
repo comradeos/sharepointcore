@@ -36,6 +36,7 @@
 
 .footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
   padding: 12px 24px 20px;
@@ -53,5 +54,9 @@
 
   .footer {
     padding: 12px 16px 16px;
+  }
+
+  .footer > button {
+    flex: 1 1 140px;
   }
 }

@@ -1,0 +1,16 @@
+.root {
+  min-width: 220px;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.options {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.clearButton {
+  width: 100%;
+  margin-top: 12px;
+}

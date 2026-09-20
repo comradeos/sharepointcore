@@ -119,6 +119,26 @@ export default class ServiceDeskService {
     }
   }
 
+  // видаляє заявку зі списку servicerequests
+  public async deleteRequest(itemId: number): Promise<void> {
+    const itemUrl = `${this.webUrl.replace(/\/$/, '')}/_api/web/lists/getbytitle('ServiceRequests')/items(${itemId})`;
+    const response = await this.client.post(
+      itemUrl,
+      SPHttpClient.configurations.v1,
+      {
+        headers: {
+          Accept: 'application/json;odata=nometadata',
+          'IF-MATCH': '*',
+          'X-HTTP-Method': 'DELETE'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Не вдалося видалити заявку (HTTP ${response.status})`);
+    }
+  }
+
   // готує поля заявки та визначає ідентифікатори користувачів
   private async createRequestPayload(draft: IServiceRequestDraft): Promise<IServiceRequestPayload> {
     const requesterIdPromise = this.ensureUser(draft.requesterIdentity);

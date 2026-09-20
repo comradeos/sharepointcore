@@ -16,10 +16,10 @@
     },
     "metadata": {
       "shortDescription": {
-        "default": "SPFXTask_Oseledko_YY description"
+        "default": "Керування сервісними заявками"
       },
       "longDescription": {
-        "default": "SPFXTask_Oseledko_YY description"
+        "default": "SPFx вебчастина для перегляду та керування сервісними заявками SharePoint"
       },
       "screenshotPaths": [],
       "videoUrl": "",
@@ -27,8 +27,8 @@
     },
     "features": [
       {
-        "title": "spfx-task-oseledko-yy Feature",
-        "description": "The feature that activates elements of the spfx-task-oseledko-yy solution.",
+        "title": "Сервісні заявки",
+        "description": "Активує вебчастину для роботи із сервісними заявками",
         "id": "27242570-aeef-4ede-8420-969e85efc1dc",
         "version": "1.0.0.0"
       }

@@ -1,7 +1,34 @@
+.searchRow {
+  margin-top: 12px;
+}
+
+.searchLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.searchControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchControl {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.resultRow {
+  margin: 14px 0;
+  text-align: left;
+}
+
 .grid {
   width: 100%;
+  min-width: 0;
   height: 520px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .actions {
@@ -15,4 +42,38 @@
 .actionButton {
   width: 32px;
   height: 32px;
+}
+
+.viewButton {
+  color: #005a9e;
+
+  &:hover {
+    color: #004578;
+    background-color: #deecf9;
+  }
+}
+
+.editButton {
+  color: #8a6d00;
+
+  &:hover {
+    color: #6b5200;
+    background-color: #fff4ce;
+  }
+}
+
+.deleteButton {
+  color: #a4262c;
+
+  &:hover {
+    color: #750b1c;
+    background-color: #fde7e9;
+  }
+}
+
+@media (max-width: 500px) {
+  .searchControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

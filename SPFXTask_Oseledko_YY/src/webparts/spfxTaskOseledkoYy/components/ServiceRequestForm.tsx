@@ -442,13 +442,17 @@ export default class ServiceRequestForm extends React.Component<
     const minimumDateTime = this.getMinimumDateTimeValue();
 
     for (const category of categories) {
-      if (category.IsActive) {
+      if (category.IsActive || category.Id === request?.CategoryId) {
         categoryOptions.push({ key: category.Id, text: category.Title });
       }
     }
 
     for (const subcategory of subcategories) {
-      if (subcategory.IsActive && subcategory.CategoryId === categoryId) {
+      const isCurrentSubcategory = subcategory.Id === request?.SubcategoryId;
+      if (
+        subcategory.CategoryId === categoryId &&
+        (subcategory.IsActive || isCurrentSubcategory)
+      ) {
         subcategoryOptions.push({ key: subcategory.Id, text: subcategory.Title });
       }
     }

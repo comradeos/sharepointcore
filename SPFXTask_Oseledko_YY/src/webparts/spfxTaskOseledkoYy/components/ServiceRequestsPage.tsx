@@ -19,6 +19,8 @@ import ServiceDeskService from '../services/ServiceDeskService';
 import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
 import ServiceRequestView from './ServiceRequestView';
+import ServiceRequestDeleteDialog from './ServiceRequestDeleteDialog';
+import ServiceRequestGenerator from './ServiceRequestGenerator';
 
 // стан екрана сервісних заявок
 interface IServiceRequestsPageState {
@@ -27,6 +29,9 @@ interface IServiceRequestsPageState {
   isCreateOpen: boolean;
   selectedRequest?: IServiceRequest;
   editingRequest?: IServiceRequest;
+  deletingRequest?: IServiceRequest;
+  isDeleting: boolean;
+  deleteError?: string;
   error?: string;
   success?: string;
 }
@@ -42,7 +47,7 @@ export default class ServiceRequestsPage extends React.Component<
   public constructor(props: IServiceRequestsPageProps) {
     super(props);
     this.service = new ServiceDeskService(props.spHttpClient, props.webUrl);
-    this.state = { isLoading: false, isCreateOpen: false };
+    this.state = { isLoading: false, isCreateOpen: false, isDeleting: false };
   }
 
   // запускає завантаження після появи вебчастини на сторінці
@@ -83,6 +88,7 @@ export default class ServiceRequestsPage extends React.Component<
       isCreateOpen: true,
       selectedRequest: undefined,
       editingRequest: undefined,
+      deletingRequest: undefined,
       success: undefined
     });
   };
@@ -102,11 +108,26 @@ export default class ServiceRequestsPage extends React.Component<
     this.loadData();
   };
 
+  // створює тестову заявку та показує помилку генерації
+  private readonly handleGenerateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
+    try {
+      await this.handleCreateRequest(draft);
+    } catch (error) {
+      this.setState({
+        success: undefined,
+        error: error instanceof Error
+          ? error.message
+          : 'Не вдалося згенерувати заявку'
+      });
+    }
+  };
+
   // відкриває вибрану заявку у режимі перегляду
   private readonly handleOpenView = (request: IServiceRequest): void => {
     this.setState({
       selectedRequest: request,
       editingRequest: undefined,
+      deletingRequest: undefined,
       success: undefined
     });
   };
@@ -122,6 +143,7 @@ export default class ServiceRequestsPage extends React.Component<
       isCreateOpen: false,
       selectedRequest: undefined,
       editingRequest: request,
+      deletingRequest: undefined,
       success: undefined
     });
   };
@@ -146,30 +168,97 @@ export default class ServiceRequestsPage extends React.Component<
     this.loadData();
   };
 
+  // відкриває підтвердження видалення вибраної заявки
+  private readonly handleOpenDelete = (request: IServiceRequest): void => {
+    this.setState({
+      isCreateOpen: false,
+      selectedRequest: undefined,
+      editingRequest: undefined,
+      deletingRequest: request,
+      isDeleting: false,
+      deleteError: undefined,
+      success: undefined
+    });
+  };
+
+  // закриває підтвердження видалення заявки
+  private readonly handleCloseDelete = (): void => {
+    if (!this.state.isDeleting) {
+      this.setState({ deletingRequest: undefined, deleteError: undefined });
+    }
+  };
+
+  // видаляє заявку та перезавантажує таблицю після успішної відповіді
+  private readonly handleDeleteRequest = async (): Promise<void> => {
+    const { deletingRequest } = this.state;
+    if (!deletingRequest) {
+      return;
+    }
+
+    this.setState({ isDeleting: true, deleteError: undefined });
+
+    try {
+      await this.service.deleteRequest(deletingRequest.Id);
+      this.setState({
+        deletingRequest: undefined,
+        isDeleting: false,
+        success: 'Заявку успішно видалено',
+        error: undefined
+      });
+      this.loadData();
+    } catch (error) {
+      this.setState({
+        isDeleting: false,
+        deleteError: error instanceof Error
+          ? error.message
+          : 'Не вдалося видалити заявку'
+      });
+    }
+  };
+
   // відображає стан завантаження кількість заявок і таблицю
   public render(): React.ReactElement<IServiceRequestsPageProps> {
     const {
-      data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest
+      data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest,
+      deletingRequest, isDeleting, deleteError
     } = this.state;
 
     return (
       <section className={styles.page}>
-        <Stack horizontal horizontalAlign="space-between" verticalAlign="center" wrap>
-          <Text variant="xLarge">Сервісні заявки</Text>
-          <Stack horizontal tokens={{ childrenGap: 8 }}>
+        <Stack
+          className={styles.header}
+          horizontal
+          horizontalAlign="space-between"
+          verticalAlign="center"
+          wrap
+        >
+          <Text className={styles.pageTitle} variant="xLarge">Сервісні заявки</Text>
+          <Stack className={styles.headerActions} horizontal wrap tokens={{ childrenGap: 8 }}>
             <PrimaryButton
               text="Створити заявку"
               onClick={this.handleOpenCreate}
               disabled={!data || isLoading}
             />
+            {data && (
+              <ServiceRequestGenerator
+                categories={data.categories}
+                subcategories={data.subcategories}
+                disabled={isLoading}
+                onGenerate={this.handleGenerateRequest}
+              />
+            )}
             <DefaultButton text="Оновити" onClick={this.handleRefresh} disabled={isLoading} />
           </Stack>
         </Stack>
 
-        {isLoading && <Spinner label="Завантажуємо списки..." />}
-        {error && <MessageBar messageBarType={MessageBarType.error}>{error}</MessageBar>}
+        {isLoading && <Spinner className={styles.loading} label="Завантажуємо списки..." />}
+        {error && (
+          <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.error}>
+            {error}
+          </MessageBar>
+        )}
         {success && (
-          <MessageBar className={styles.successMessage} messageBarType={MessageBarType.success}>
+          <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.success}>
             {success}
           </MessageBar>
         )}
@@ -181,6 +270,7 @@ export default class ServiceRequestsPage extends React.Component<
               requests={data.requests}
               onView={this.handleOpenView}
               onEdit={this.handleOpenEdit}
+              onDelete={this.handleOpenDelete}
             />
             {isCreateOpen && (
               <ServiceRequestForm
@@ -209,6 +299,15 @@ export default class ServiceRequestsPage extends React.Component<
                 peoplePickerContext={this.props.peoplePickerContext}
                 currentUserEmail={this.props.currentUserEmail}
                 onSubmit={this.handleUpdateRequest}
+              />
+            )}
+            {deletingRequest && (
+              <ServiceRequestDeleteDialog
+                request={deletingRequest}
+                isDeleting={isDeleting}
+                error={deleteError}
+                onDismiss={this.handleCloseDelete}
+                onConfirm={this.handleDeleteRequest}
               />
             )}
           </div>

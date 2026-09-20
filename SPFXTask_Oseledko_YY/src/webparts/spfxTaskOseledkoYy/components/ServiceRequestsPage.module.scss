@@ -4,10 +4,43 @@
   color: var(--bodyText);
 }
 
+.header {
+  gap: 12px;
+}
+
+.pageTitle {
+  flex: 0 0 auto;
+}
+
+.headerActions {
+  max-width: 100%;
+}
+
 .content {
   margin-top: 16px;
 }
 
-.successMessage {
+.loading,
+.statusMessage {
   margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 12px;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .headerActions > button {
+    flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 380px) {
+  .headerActions > button {
+    flex-basis: 100%;
+  }
 }
