@@ -1,12 +1,5 @@
 import { SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
-import {
-  IRequestCategory,
-  IRequestSubcategory,
-  IServiceDeskData,
-  IServiceRequest,
-  IServiceRequestDraft,
-  SharePointNullable
-} from '../models/ServiceDeskModels';
+import { IRequestCategory, IRequestSubcategory, IServiceDeskData, IServiceRequest, IServiceRequestDraft, SharePointNullable } from '../models/ServiceDeskModels';
 
 // сторінка результатів sharepoint rest api без службових метаданих
 interface IODataPage<T> {

@@ -1,31 +1,8 @@
 import * as React from 'react';
-import {
-  DefaultButton,
-  Dropdown,
-  IDropdownOption,
-  IPersonaProps,
-  IconButton,
-  MessageBar,
-  MessageBarType,
-  Modal,
-  PrimaryButton,
-  Spinner,
-  SpinnerSize,
-  Stack,
-  TextField,
-  Toggle
-} from '@fluentui/react';
-import {
-  IPeoplePickerContext,
-  PeoplePicker,
-  PrincipalType
-} from '@pnp/spfx-controls-react/lib/PeoplePicker';
-import {
-  IRequestCategory,
-  IRequestSubcategory,
-  IServiceRequest,
-  IServiceRequestDraft
-} from '../models/ServiceDeskModels';
+import { DefaultButton, Dropdown, IDropdownOption, IPersonaProps, IconButton, MessageBar, MessageBarType, Modal, PrimaryButton, Spinner, SpinnerSize, Stack, TextField, Toggle } from '@fluentui/react';
+import { IPeoplePickerContext, PeoplePicker, PrincipalType } from '@pnp/spfx-controls-react/lib/PeoplePicker';
+import { requestPriorities, requestStatuses } from '../models/ServiceDeskConstants';
+import { IRequestCategory, IRequestSubcategory, IServiceRequest, IServiceRequestDraft } from '../models/ServiceDeskModels';
 import styles from './ServiceRequestForm.module.scss';
 
 // вхідні дані форми створення заявки
@@ -83,20 +60,23 @@ interface IServiceRequestFormErrors {
 
 // доступні значення статусу зі списку sharepoint
 const statusOptions: IDropdownOption[] = [
-  { key: 'Нова', text: 'Нова' },
-  { key: 'В роботі', text: 'В роботі' },
-  { key: 'Вирішена', text: 'Вирішена' },
-  { key: 'Закрита', text: 'Закрита' }
+  { key: requestStatuses.new, text: requestStatuses.new },
+  { key: requestStatuses.inProgress, text: requestStatuses.inProgress },
+  { key: requestStatuses.resolved, text: requestStatuses.resolved },
+  { key: requestStatuses.closed, text: requestStatuses.closed }
 ];
 
 // доступні значення пріоритету зі списку sharepoint
 const priorityOptions: IDropdownOption[] = [
-  { key: 'Низький', text: 'Низький' },
-  { key: 'Середній', text: 'Середній' },
-  { key: 'Високий', text: 'Високий' }
+  { key: requestPriorities.low, text: requestPriorities.low },
+  { key: requestPriorities.medium, text: requestPriorities.medium },
+  { key: requestPriorities.high, text: requestPriorities.high }
 ];
 
 const allowedEmailDomain = '@ua.energy';
+
+// кількість мілісекунд в одній хвилині
+const millisecondsPerMinute = 60 * 1000;
 
 // залишає у результатах пошуку користувачів з дозволеною поштою
 function filterUaEnergyUsers(results: IPersonaProps[]): IPersonaProps[] {
@@ -104,6 +84,7 @@ function filterUaEnergyUsers(results: IPersonaProps[]): IPersonaProps[] {
 
   for (const result of results) {
     const email = result.secondaryText?.trim().toLowerCase() ?? '';
+
     if (email.endsWith(allowedEmailDomain)) {
       filteredResults.push(result);
     }
@@ -123,7 +104,10 @@ function toDateTimeLocal(value?: string): string {
     return '';
   }
 
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  const localDate = new Date(
+    date.getTime() - date.getTimezoneOffset() * millisecondsPerMinute
+  );
+
   return localDate.toISOString().slice(0, 16);
 }
 
@@ -141,8 +125,8 @@ export default class ServiceRequestForm extends React.Component<
       description: request?.Description ?? '',
       categoryId: request?.CategoryId,
       subcategoryId: request?.SubcategoryId,
-      status: request?.Status ?? 'Нова',
-      priority: request?.Priority ?? 'Середній',
+      status: request?.Status ?? requestStatuses.new,
+      priority: request?.Priority ?? requestPriorities.medium,
       requester: request
         ? [{ id: String(request.Requester.Id), text: request.Requester.Title, secondaryText: request.Requester.EMail }]
         : props.currentUserEmail
@@ -166,9 +150,11 @@ export default class ServiceRequestForm extends React.Component<
   // прибирає помилку зміненого поля та повідомлення перевірки
   private clearValidation(...fields: Array<keyof IServiceRequestFormErrors>): void {
     const validationErrors = { ...this.state.validationErrors };
+
     for (const field of fields) {
       delete validationErrors[field];
     }
+
     this.setState({ validationErrors, validationMessage: undefined });
   }
 
@@ -256,7 +242,9 @@ export default class ServiceRequestForm extends React.Component<
   private getMinimumDateTimeValue(): string {
     const currentDate = new Date();
     currentDate.setSeconds(0, 0);
-    const localDate = new Date(currentDate.getTime() - currentDate.getTimezoneOffset() * 60000);
+    const localDate = new Date(
+      currentDate.getTime() - currentDate.getTimezoneOffset() * millisecondsPerMinute
+    );
     return localDate.toISOString().slice(0, 16);
   }
 
@@ -290,8 +278,13 @@ export default class ServiceRequestForm extends React.Component<
       errors.subcategory = 'Оберіть підкатегорію';
     } else {
       let isRelatedSubcategory = false;
+      
       for (const subcategory of this.props.subcategories) {
-        if (subcategory.Id === subcategoryId && subcategory.CategoryId === categoryId) {
+        const isSelectedSubcategoryForCategory =
+          subcategory.Id === subcategoryId && 
+          subcategory.CategoryId === categoryId;
+
+        if (isSelectedSubcategoryForCategory) {
           isRelatedSubcategory = true;
           break;
         }
@@ -301,7 +294,12 @@ export default class ServiceRequestForm extends React.Component<
       }
     }
 
-    if (!this.props.request && (status === 'Вирішена' || status === 'Закрита')) {
+    const isCreateMode = !this.props.request;
+    const isCompletedStatus =
+      status === requestStatuses.resolved || 
+      status === requestStatuses.closed;
+
+    if (isCreateMode && isCompletedStatus) {
       errors.status = 'Нову заявку не можна створити із завершеним статусом';
     }
 
@@ -311,32 +309,57 @@ export default class ServiceRequestForm extends React.Component<
       errors.requester = 'Пошта заявника повинна закінчуватися на @ua.energy';
     }
 
-    if ((status === 'Вирішена' || status === 'Закрита') && assignee.length === 0) {
+    const isAssigneeMissingForCompletedStatus = 
+    isCompletedStatus && 
+    assignee.length === 0;
+    
+    const hasAssigneeWithInvalidDomain =
+      assignee.length > 0 && 
+      !this.hasAllowedEmailDomain(assignee);
+
+    if (isAssigneeMissingForCompletedStatus) {
       errors.assignee = 'Оберіть виконавця для завершеної заявки';
-    } else if (assignee.length > 0 && !this.hasAllowedEmailDomain(assignee)) {
+    } else if (hasAssigneeWithInvalidDomain) {
       errors.assignee = 'Пошта виконавця повинна закінчуватися на @ua.energy';
     }
 
     const plannedStartTime = plannedStart ? new Date(plannedStart).getTime() : undefined;
     const dueDateTime = dueDate ? new Date(dueDate).getTime() : undefined;
     const minimumDateTime = new Date(this.getMinimumDateTimeValue()).getTime();
+    const isDueDateInvalid = dueDateTime === undefined || Number.isNaN(dueDateTime);
+    const isDueDateInPast = dueDateTime !== undefined && dueDateTime < minimumDateTime;
 
     if (!dueDate) {
       errors.dueDate = 'Вкажіть кінцевий термін';
-    } else if (dueDateTime === undefined || Number.isNaN(dueDateTime)) {
+    } else if (isDueDateInvalid) {
       errors.dueDate = 'Вкажіть коректний кінцевий термін';
-    } else if (dueDateTime < minimumDateTime) {
+    } else if (isDueDateInPast) {
       errors.dueDate = 'Кінцевий термін не може бути в минулому';
     }
 
-    if (plannedStart && (plannedStartTime === undefined || Number.isNaN(plannedStartTime))) {
+    const isPlannedStartInvalid =
+      Boolean(plannedStart) &&
+      (plannedStartTime === undefined || 
+        Number.isNaN(plannedStartTime)
+      );
+    
+    const isPlannedStartInPast =
+      plannedStartTime !== undefined && 
+      plannedStartTime < minimumDateTime;
+
+    if (isPlannedStartInvalid) {
       errors.plannedStart = 'Вкажіть коректний плановий початок';
-    } else if (plannedStartTime !== undefined && plannedStartTime < minimumDateTime) {
+    } else if (isPlannedStartInPast) {
       errors.plannedStart = 'Плановий початок не може бути в минулому';
     }
 
-    if (plannedStartTime !== undefined && dueDateTime !== undefined
-      && !Number.isNaN(plannedStartTime) && !Number.isNaN(dueDateTime)) {
+    const areComparableDates =
+      plannedStartTime !== undefined &&
+      dueDateTime !== undefined &&
+      !Number.isNaN(plannedStartTime) &&
+      !Number.isNaN(dueDateTime);
+
+    if (areComparableDates) {
       if (plannedStartTime > dueDateTime) {
         errors.plannedStart = 'Плановий початок не може бути пізніше кінцевого терміну';
         errors.dueDate = 'Кінцевий термін не може бути раніше планового початку';
@@ -345,8 +368,14 @@ export default class ServiceRequestForm extends React.Component<
 
     if (estimatedHours) {
       const estimatedHoursPattern = /^\d+(\.\d)?$/;
+      
       const estimatedHoursNumber = Number(estimatedHours);
-      if (!estimatedHoursPattern.test(estimatedHours) || estimatedHoursNumber <= 0) {
+      
+      const isEstimatedHoursInvalid =
+        !estimatedHoursPattern.test(estimatedHours) || 
+        estimatedHoursNumber <= 0;
+
+      if (isEstimatedHoursInvalid) {
         errors.estimatedHours = 'Вкажіть додатне число з одним десятковим знаком';
       }
     }
@@ -384,6 +413,7 @@ export default class ServiceRequestForm extends React.Component<
       requester, assignee, plannedStart, dueDate, estimatedHours,
       contactEmail, requiresOnsiteVisit
     } = this.state;
+
     const assigneeIdentity = this.getPersonIdentity(assignee);
 
     return {
@@ -411,6 +441,7 @@ export default class ServiceRequestForm extends React.Component<
         validationErrors,
         validationMessage: 'Перевірте виділені поля'
       });
+
       return;
     }
 
@@ -448,17 +479,20 @@ export default class ServiceRequestForm extends React.Component<
     const minimumDateTime = this.getMinimumDateTimeValue();
 
     for (const category of categories) {
-      if (category.IsActive || category.Id === request?.CategoryId) {
+      const isAvailableCategory = category.IsActive || category.Id === request?.CategoryId;
+
+      if (isAvailableCategory) {
         categoryOptions.push({ key: category.Id, text: category.Title });
       }
     }
 
     for (const subcategory of subcategories) {
       const isCurrentSubcategory = subcategory.Id === request?.SubcategoryId;
-      if (
-        subcategory.CategoryId === categoryId &&
-        (subcategory.IsActive || isCurrentSubcategory)
-      ) {
+      const belongsToSelectedCategory = subcategory.CategoryId === categoryId;
+      const isAvailableSubcategory = subcategory.IsActive || isCurrentSubcategory;
+      const shouldShowSubcategory = belongsToSelectedCategory && isAvailableSubcategory;
+
+      if (shouldShowSubcategory) {
         subcategoryOptions.push({ key: subcategory.Id, text: subcategory.Title });
       }
     }
@@ -470,13 +504,13 @@ export default class ServiceRequestForm extends React.Component<
         isBlocking
         containerClassName={styles.modal}
         scrollableContentClassName={styles.content}
-        styles={{ main: { overflowY: 'hidden' }, scrollableContent: { overflowY: 'hidden' } }}
         titleAriaId="service-request-form-title"
       >
         <div className={styles.header}>
           <h2 id="service-request-form-title" className={styles.title}>
             {request ? 'Редагування сервісної заявки' : 'Нова сервісна заявка'}
           </h2>
+
           <IconButton
             iconProps={{ iconName: 'Cancel' }}
             ariaLabel="Закрити"
@@ -484,21 +518,79 @@ export default class ServiceRequestForm extends React.Component<
             disabled={isSubmitting}
           />
         </div>
+
         <Stack className={styles.body} tokens={{ childrenGap: 14 }}>
           {validationMessage && (
-            <MessageBar messageBarType={Object.keys(validationErrors).length > 0 ? MessageBarType.error : MessageBarType.success}>
+            <MessageBar
+              messageBarType={
+                Object.keys(validationErrors).length > 0
+                  ? MessageBarType.error
+                  : MessageBarType.success
+              }
+            >
               {validationMessage}
             </MessageBar>
           )}
+
           {submitError && (
             <MessageBar messageBarType={MessageBarType.error}>{submitError}</MessageBar>
           )}
-          <TextField label="Назва заявки" required value={title} errorMessage={validationErrors.title} onChange={this.handleTitleChange} />
-          <TextField label="Опис" required multiline rows={4} value={description} errorMessage={validationErrors.description} onChange={this.handleDescriptionChange} />
-          <Dropdown label="Категорія" required placeholder="Оберіть категорію" options={categoryOptions} selectedKey={categoryId} errorMessage={validationErrors.category} onChange={this.handleCategoryChange} />
-          <Dropdown label="Підкатегорія" required placeholder="Оберіть підкатегорію" options={subcategoryOptions} selectedKey={subcategoryId} errorMessage={validationErrors.subcategory} onChange={this.handleSubcategoryChange} disabled={categoryId === undefined} />
-          <Dropdown label="Статус" required options={availableStatusOptions} selectedKey={status} errorMessage={validationErrors.status} onChange={this.handleStatusChange} />
-          <Dropdown label="Пріоритет" required options={priorityOptions} selectedKey={priority} onChange={this.handlePriorityChange} />
+
+          <TextField 
+            label="Назва заявки" 
+            required value={title} 
+            errorMessage={validationErrors.title} 
+            onChange={this.handleTitleChange} 
+          />
+
+          <TextField 
+            label="Опис" 
+            required 
+            multiline 
+            rows={4} 
+            value={description} 
+            errorMessage={validationErrors.description} 
+            onChange={this.handleDescriptionChange} 
+          />
+          
+          <Dropdown 
+            label="Категорія" 
+            required 
+            placeholder="Оберіть категорію" 
+            options={categoryOptions} 
+            selectedKey={categoryId} 
+            errorMessage={validationErrors.category} 
+            onChange={this.handleCategoryChange} 
+          />
+
+          <Dropdown 
+            label="Підкатегорія" 
+            required 
+            placeholder="Оберіть підкатегорію" 
+            options={subcategoryOptions} 
+            selectedKey={subcategoryId} 
+            errorMessage={validationErrors.subcategory} 
+            onChange={this.handleSubcategoryChange} 
+            disabled={categoryId === undefined} 
+          />
+
+          <Dropdown
+            label="Статус"
+            required
+            options={availableStatusOptions}
+            selectedKey={status}
+            errorMessage={validationErrors.status}
+            onChange={this.handleStatusChange}
+          />
+
+          <Dropdown
+            label="Пріоритет"
+            required
+            options={priorityOptions}
+            selectedKey={priority}
+            onChange={this.handlePriorityChange}
+          />
+
           <PeoplePicker
             context={peoplePickerContext}
             titleText="Заявник"
@@ -514,6 +606,7 @@ export default class ServiceRequestForm extends React.Component<
             errorMessage={validationErrors.requester}
             onChange={this.handleRequesterChange}
           />
+
           <PeoplePicker
             context={peoplePickerContext}
             titleText="Виконавець"
@@ -526,15 +619,65 @@ export default class ServiceRequestForm extends React.Component<
             errorMessage={validationErrors.assignee}
             onChange={this.handleAssigneeChange}
           />
-          <TextField label="Плановий початок" type="datetime-local" min={minimumDateTime} value={plannedStart} errorMessage={validationErrors.plannedStart} onChange={this.handlePlannedStartChange} />
-          <TextField label="Кінцевий термін" required type="datetime-local" min={minimumDateTime} value={dueDate} errorMessage={validationErrors.dueDate} onChange={this.handleDueDateChange} />
-          <TextField label="Оцінка часу в годинах" type="number" min={0.1} step={0.1} value={estimatedHours} errorMessage={validationErrors.estimatedHours} onChange={this.handleEstimatedHoursChange} />
-          <TextField label="Контактна електронна пошта" type="email" value={contactEmail} errorMessage={validationErrors.contactEmail} onChange={this.handleContactEmailChange} />
-          <Toggle label="Потрібен виїзд" checked={requiresOnsiteVisit} onText="Так" offText="Ні" onChange={this.handleOnsiteChange} />
+
+          <TextField
+            label="Плановий початок"
+            type="datetime-local"
+            min={minimumDateTime}
+            value={plannedStart}
+            errorMessage={validationErrors.plannedStart}
+            onChange={this.handlePlannedStartChange}
+          />
+
+          <TextField
+            label="Кінцевий термін"
+            required
+            type="datetime-local"
+            min={minimumDateTime}
+            value={dueDate}
+            errorMessage={validationErrors.dueDate}
+            onChange={this.handleDueDateChange}
+          />
+          <TextField
+            label="Оцінка часу в годинах"
+            type="number"
+            min={0.1}
+            step={0.1}
+            value={estimatedHours}
+            errorMessage={validationErrors.estimatedHours}
+            onChange={this.handleEstimatedHoursChange}
+          />
+
+          <TextField
+            label="Контактна електронна пошта"
+            type="email"
+            value={contactEmail}
+            errorMessage={validationErrors.contactEmail}
+            onChange={this.handleContactEmailChange}
+          />
+
+          <Toggle
+            label="Потрібен виїзд"
+            checked={requiresOnsiteVisit}
+            onText="Так"
+            offText="Ні"
+            onChange={this.handleOnsiteChange}
+          />
         </Stack>
+
         <div className={styles.footer}>
-          <PrimaryButton text={request ? 'Зберегти' : 'Створити'} onClick={this.handleSubmit} disabled={isSubmitting} />
-          <DefaultButton text="Закрити" onClick={this.props.onDismiss} disabled={isSubmitting} />
+          <PrimaryButton
+            text={request ? 'Зберегти' : 'Створити'}
+            onClick={this.handleSubmit}
+            disabled={isSubmitting}
+          />
+
+          <DefaultButton
+            text="Закрити"
+            onClick={this.props.onDismiss}
+            disabled={isSubmitting}
+          />
+          
           {isSubmitting && (
             <Spinner size={SpinnerSize.small} label="Зберігаємо заявку" />
           )}

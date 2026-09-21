@@ -1,26 +1,8 @@
 import * as React from 'react';
-import {
-  AllCommunityModule,
-  ColDef,
-  GridApi,
-  GridReadyEvent,
-  ModelUpdatedEvent,
-  themeQuartz,
-  ValueFormatterParams
-} from 'ag-grid-community';
+import { AllCommunityModule, ColDef, GridApi, GridReadyEvent, ModelUpdatedEvent, themeQuartz, ValueFormatterParams } from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
-import {
-  AgGridProvider,
-  AgGridReact,
-  CustomCellRendererProps
-} from 'ag-grid-react';
-import {
-  DefaultButton,
-  IconButton,
-  SearchBox,
-  Text,
-  TooltipHost
-} from '@fluentui/react';
+import { AgGridProvider, AgGridReact, CustomCellRendererProps } from 'ag-grid-react';
+import { DefaultButton, IconButton, SearchBox, Text, TooltipHost } from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 import ServiceRequestChoiceFilter from './ServiceRequestChoiceFilter';
 import styles from './ServiceRequestsGrid.module.scss';
@@ -119,7 +101,7 @@ function RequestActionsRenderer(
     <div className={styles.actions}>
       <TooltipHost
         content="Переглянути"
-        styles={{ root: { display: 'flex', alignItems: 'center', height: '100%' } }}
+        hostClassName={styles.actionTooltip}
       >
         <IconButton
           className={`${styles.actionButton} ${styles.viewButton}`}
@@ -130,7 +112,7 @@ function RequestActionsRenderer(
       </TooltipHost>
       <TooltipHost
         content="Редагувати"
-        styles={{ root: { display: 'flex', alignItems: 'center', height: '100%' } }}
+        hostClassName={styles.actionTooltip}
       >
         <IconButton
           className={`${styles.actionButton} ${styles.editButton}`}
@@ -141,7 +123,7 @@ function RequestActionsRenderer(
       </TooltipHost>
       <TooltipHost
         content="Видалити"
-        styles={{ root: { display: 'flex', alignItems: 'center', height: '100%' } }}
+        hostClassName={styles.actionTooltip}
       >
         <IconButton
           className={`${styles.actionButton} ${styles.deleteButton}`}
@@ -281,6 +263,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
   const [visibleCount, setVisibleCount] = React.useState(props.requests.length);
   const gridApi = React.useRef<GridApi<IRequestGridRow>>();
   const rows = props.requests.map(toGridRow);
+
   const gridContext: IRequestGridContext = {
     onView: props.onView,
     onEdit: props.onEdit,
@@ -313,6 +296,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
     <AgGridProvider modules={modules}>
       <div className={styles.searchRow}>
         <Text className={styles.searchLabel}>Пошук</Text>
+
         <div className={styles.searchControls}>
           <SearchBox
             className={styles.searchControl}
@@ -321,12 +305,15 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
             value={searchText}
             onChange={handleSearchChange}
           />
+
           <DefaultButton text="Очистити фільтри" onClick={handleClearFilters} />
         </div>
       </div>
+
       <div className={styles.resultRow}>
         <Text>Знайдено заявок: {visibleCount}</Text>
       </div>
+
       <div className={styles.grid}>
         <AgGridReact<IRequestGridRow>
           rowData={rows}
@@ -345,6 +332,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           onModelUpdated={handleModelUpdated}
         />
       </div>
+      
     </AgGridProvider>
   );
 }

@@ -1,10 +1,5 @@
 import * as React from 'react';
-import {
-  Checkbox,
-  DefaultButton,
-  Stack,
-  Text
-} from '@fluentui/react';
+import { Checkbox, DefaultButton, Stack, Text } from '@fluentui/react';
 import { IDoesFilterPassParams } from 'ag-grid-community';
 import { CustomFilterProps, useGridFilter } from 'ag-grid-react';
 import styles from './ServiceRequestChoiceFilter.module.scss';
@@ -23,13 +18,17 @@ function getFilterOptions(props: CustomFilterProps): string[] {
   // додає значення кожного рядка до набору варіантів
   props.api.forEachNode(node => {
     const value = props.getValue(node);
-    if (value !== undefined && value !== null && String(value)) {
+    const hasFilterValue = value !== undefined && value !== null && Boolean(String(value));
+
+    if (hasFilterValue) {
       uniqueValues.add(String(value));
     }
   });
 
   const options = Array.from(uniqueValues);
+
   options.sort(ukrainianCollator.compare);
+
   return options;
 }
 
@@ -47,12 +46,14 @@ export default function ServiceRequestChoiceFilter(
     }
 
     const value = String(props.getValue(params.node) ?? '');
+
     return selectedValues.indexOf(value) >= 0;
   };
 
   useGridFilter({ doesFilterPass });
 
   const optionControls: React.ReactElement[] = [];
+
   for (const option of options) {
     // змінює вибір одного значення фільтра
     const handleOptionChange = (
@@ -93,9 +94,11 @@ export default function ServiceRequestChoiceFilter(
     <div className={styles.root}>
       <Stack tokens={{ childrenGap: 8 }}>
         <Text variant="smallPlus">Оберіть значення</Text>
+
         <div className={styles.options}>
           <Stack tokens={{ childrenGap: 8 }}>{optionControls}</Stack>
         </div>
+
         <DefaultButton
           className={styles.clearButton}
           text="Очистити"

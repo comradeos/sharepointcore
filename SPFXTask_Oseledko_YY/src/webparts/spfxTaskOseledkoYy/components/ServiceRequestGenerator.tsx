@@ -1,10 +1,8 @@
 import * as React from 'react';
 import { DefaultButton, Stack, TextField } from '@fluentui/react';
-import {
-  IRequestCategory,
-  IRequestSubcategory,
-  IServiceRequestDraft
-} from '../models/ServiceDeskModels';
+import { IRequestCategory, IRequestSubcategory, IServiceRequestDraft } from '../models/ServiceDeskModels';
+import { requestPriorities, requestStatuses } from '../models/ServiceDeskConstants';
+import styles from './ServiceRequestGenerator.module.scss';
 
 // вхідні дані тимчасового генератора заявок
 interface IServiceRequestGeneratorProps {
@@ -21,6 +19,7 @@ interface IRequestCategoryPair {
 }
 
 const generatedUserEmail = 'Oseledko.YY@ua.energy';
+
 const generatedTitles = [
   'Налаштування робочого місця',
   'Проблема з доступом до системи',
@@ -28,6 +27,7 @@ const generatedTitles = [
   'Оновлення програмного забезпечення',
   'Діагностика обладнання'
 ];
+
 const generatedDescriptions = [
   'Потрібна допомога з налаштуванням робочого середовища',
   'Користувач повідомив про проблему під час виконання робочого завдання',
@@ -35,8 +35,13 @@ const generatedDescriptions = [
   'Потрібна консультація та технічна перевірка',
   'Необхідно виконати діагностику та запропонувати рішення'
 ];
-const generatedStatuses = ['Нова', 'В роботі'];
-const generatedPriorities = ['Низький', 'Середній', 'Високий'];
+const generatedStatuses = [requestStatuses.new, requestStatuses.inProgress];
+
+const generatedPriorities = [
+  requestPriorities.low,
+  requestPriorities.medium,
+  requestPriorities.high
+];
 
 // повертає випадковий елемент непорожнього масиву
 function getRandomItem<T>(items: T[]): T {
@@ -55,7 +60,9 @@ function parseGenerationCount(value: string): number | undefined {
   }
 
   const count = Number(value);
-  return Number.isInteger(count) && count >= 1 && count <= 1000
+  const isValidCount = Number.isInteger(count) && count >= 1 && count <= 1000;
+
+  return isValidCount
     ? count
     : undefined;
 }
@@ -73,7 +80,11 @@ function getCategoryPairs(
     }
 
     for (const subcategory of subcategories) {
-      if (subcategory.IsActive && subcategory.CategoryId === category.Id) {
+      const isActiveSubcategoryForCategory =
+        subcategory.IsActive && 
+        subcategory.CategoryId === category.Id;
+
+      if (isActiveSubcategoryForCategory) {
         pairs.push({ categoryId: category.Id, subcategoryId: subcategory.Id });
       }
     }
@@ -86,8 +97,10 @@ function getCategoryPairs(
 function createRandomDraft(pair: IRequestCategoryPair): IServiceRequestDraft {
   const plannedStart = new Date();
   plannedStart.setHours(plannedStart.getHours() + getRandomInteger(1, 48));
+  
   const dueDate = new Date(plannedStart);
   dueDate.setHours(dueDate.getHours() + getRandomInteger(4, 72));
+  
   const title = getRandomItem(generatedTitles);
 
   return {
@@ -126,16 +139,20 @@ export default function ServiceRequestGenerator(
 
   // створює задану кількість випадкових заявок після натискання кнопки
   const handleGenerate = async (): Promise<void> => {
-    if (categoryPairs.length === 0 || generationCount === undefined) {
+    const cannotGenerate = categoryPairs.length === 0 || generationCount === undefined;
+
+    if (cannotGenerate) {
       return;
     }
 
     const drafts: IServiceRequestDraft[] = [];
+    
     for (let index = 0; index < generationCount; index += 1) {
       drafts.push(createRandomDraft(getRandomItem(categoryPairs)));
     }
 
     setIsGenerating(true);
+
     try {
       await props.onGenerate(drafts);
     } finally {
@@ -154,16 +171,17 @@ export default function ServiceRequestGenerator(
         placeholder="Кількість"
         ariaLabel="Кількість заявок"
         title="Кількість заявок від 1 до 1000"
-        styles={{ root: { width: 100 } }}
+        className={styles.countField}
         errorMessage={generationCount === undefined ? 'Від 1 до 1000' : undefined}
         disabled={props.disabled || isGenerating}
         onChange={handleCountChange}
       />
+
       <DefaultButton
         iconProps={{ iconName: 'AddTo' }}
         ariaLabel={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
         title={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
-        styles={{ root: { width: 70, minWidth: 70 } }}
+        className={styles.generateButton}
         onClick={handleGenerate}
         disabled={props.disabled || isGenerating || categoryPairs.length === 0 || generationCount === undefined}
       />

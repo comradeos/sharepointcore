@@ -101,10 +101,12 @@ export default class ServiceRequestsPage extends React.Component<
   // створює заявку та оновлює таблицю після успішної відповіді
   private readonly handleCreateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
     await this.service.createRequest(draft);
+
     this.setState({
       success: 'Заявку успішно створено',
       error: undefined
     });
+
     this.loadData();
   };
 
@@ -112,6 +114,7 @@ export default class ServiceRequestsPage extends React.Component<
   private readonly handleGenerateRequest = async (drafts: IServiceRequestDraft[]): Promise<void> => {
     try {
       const batchSize = 10;
+
       for (let startIndex = 0; startIndex < drafts.length; startIndex += batchSize) {
         const createRequests: Array<Promise<void>> = [];
         const batchEnd = Math.min(startIndex + batchSize, drafts.length);
@@ -127,6 +130,7 @@ export default class ServiceRequestsPage extends React.Component<
         success: `Створено заявок: ${drafts.length}`,
         error: undefined
       });
+
       this.loadData();
     } catch (error) {
       this.setState({
@@ -172,15 +176,18 @@ export default class ServiceRequestsPage extends React.Component<
   // оновлює заявку та перезавантажує таблицю після успішної відповіді
   private readonly handleUpdateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
     const { editingRequest } = this.state;
+
     if (!editingRequest) {
       throw new Error('Не вдалося визначити заявку для оновлення');
     }
 
     await this.service.updateRequest(editingRequest.Id, draft);
+
     this.setState({
       success: 'Заявку успішно оновлено',
       error: undefined
     });
+
     this.loadData();
   };
 
@@ -207,6 +214,7 @@ export default class ServiceRequestsPage extends React.Component<
   // видаляє заявку та перезавантажує таблицю після успішної відповіді
   private readonly handleDeleteRequest = async (): Promise<void> => {
     const { deletingRequest } = this.state;
+
     if (!deletingRequest) {
       return;
     }
@@ -215,12 +223,14 @@ export default class ServiceRequestsPage extends React.Component<
 
     try {
       await this.service.deleteRequest(deletingRequest.Id);
+
       this.setState({
         deletingRequest: undefined,
         isDeleting: false,
         success: 'Заявку успішно видалено',
         error: undefined
       });
+
       this.loadData();
     } catch (error) {
       this.setState({
@@ -249,6 +259,7 @@ export default class ServiceRequestsPage extends React.Component<
           wrap
         >
           <Text className={styles.pageTitle} variant="xLarge">Сервісні заявки</Text>
+
           <Stack className={styles.headerActions} horizontal wrap tokens={{ childrenGap: 8 }}>
             {data && (
               <ServiceRequestGenerator
@@ -258,7 +269,13 @@ export default class ServiceRequestsPage extends React.Component<
                 onGenerate={this.handleGenerateRequest}
               />
             )}
-            <DefaultButton text="Оновити" onClick={this.handleRefresh} disabled={isLoading} />
+
+            <DefaultButton 
+              text="Оновити" 
+              onClick={this.handleRefresh} 
+              disabled={isLoading} 
+            />
+
             <PrimaryButton
               text="Створити"
               onClick={this.handleOpenCreate}
@@ -268,11 +285,13 @@ export default class ServiceRequestsPage extends React.Component<
         </Stack>
 
         {isLoading && <Spinner className={styles.loading} label="Завантажуємо списки..." />}
+
         {error && (
           <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.error}>
             {error}
           </MessageBar>
         )}
+
         {success && (
           <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.success}>
             {success}
@@ -282,12 +301,14 @@ export default class ServiceRequestsPage extends React.Component<
         {data && (
           <div className={styles.content}>
             <Text variant="medium">Усього заявок: {data.requests.length}</Text>
+
             <ServiceRequestsGrid
               requests={data.requests}
               onView={this.handleOpenView}
               onEdit={this.handleOpenEdit}
               onDelete={this.handleOpenDelete}
             />
+
             {isCreateOpen && (
               <ServiceRequestForm
                 isOpen={isCreateOpen}
@@ -299,12 +320,14 @@ export default class ServiceRequestsPage extends React.Component<
                 onSubmit={this.handleCreateRequest}
               />
             )}
+
             {selectedRequest && (
               <ServiceRequestView
                 request={selectedRequest}
                 onDismiss={this.handleCloseView}
               />
             )}
+
             {editingRequest && (
               <ServiceRequestForm
                 isOpen
@@ -317,6 +340,7 @@ export default class ServiceRequestsPage extends React.Component<
                 onSubmit={this.handleUpdateRequest}
               />
             )}
+            
             {deletingRequest && (
               <ServiceRequestDeleteDialog
                 request={deletingRequest}

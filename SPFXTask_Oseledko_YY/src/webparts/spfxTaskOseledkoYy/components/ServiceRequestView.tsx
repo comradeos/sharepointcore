@@ -1,15 +1,6 @@
 import * as React from 'react';
-import {
-  DefaultButton,
-  IconButton,
-  Label,
-  Modal,
-  Text
-} from '@fluentui/react';
-import {
-  IServiceRequest,
-  SharePointNullable
-} from '../models/ServiceDeskModels';
+import { DefaultButton, IconButton, Label, Modal, Text } from '@fluentui/react';
+import { IServiceRequest, SharePointNullable } from '../models/ServiceDeskModels';
 import styles from './ServiceRequestView.module.scss';
 
 // вхідні дані вікна перегляду заявки
@@ -45,6 +36,7 @@ function formatDate(value: SharePointNullable<string>): string {
   }
 
   const timestamp = Date.parse(value);
+
   return Number.isNaN(timestamp) ? 'Не вказано' : dateFormatter.format(timestamp);
 }
 
@@ -78,13 +70,11 @@ export default function ServiceRequestView(
       isBlocking
       containerClassName={styles.modal}
       scrollableContentClassName={styles.content}
-      styles={{ main: { overflowY: 'hidden' }, scrollableContent: { overflowY: 'hidden' } }}
       titleAriaId="service-request-view-title"
     >
       <div className={styles.header}>
-        <h2 id="service-request-view-title" className={styles.title}>
-          Перегляд сервісної заявки
-        </h2>
+        <h2 id="service-request-view-title" className={styles.title}>Перегляд сервісної заявки</h2>
+        
         <IconButton
           iconProps={{ iconName: 'Cancel' }}
           ariaLabel="Закрити"

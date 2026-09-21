@@ -1,16 +1,5 @@
 import * as React from 'react';
-import {
-  DefaultButton,
-  Dialog,
-  DialogFooter,
-  DialogType,
-  MessageBar,
-  MessageBarType,
-  PrimaryButton,
-  Spinner,
-  SpinnerSize,
-  Stack
-} from '@fluentui/react';
+import { DefaultButton, Dialog, DialogFooter, DialogType, MessageBar, MessageBarType, PrimaryButton, Spinner, SpinnerSize, Stack } from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 
 // вхідні дані вікна підтвердження видалення
@@ -34,7 +23,7 @@ export default function ServiceRequestDeleteDialog(
         type: DialogType.normal,
         title: 'Видалення сервісної заявки',
         closeButtonAriaLabel: 'Закрити',
-        subText: `Ви впевнені що хочете видалити заявку «${props.request.Title}»`
+        subText: `Ви впевнені що хочете видалити заявку "${props.request.Title}"`
       }}
       modalProps={{ isBlocking: true }}
     >
@@ -46,12 +35,14 @@ export default function ServiceRequestDeleteDialog(
           <Spinner size={SpinnerSize.small} label="Видаляємо заявку" />
         )}
       </Stack>
+
       <DialogFooter>
         <PrimaryButton
           text="Видалити"
           onClick={props.onConfirm}
           disabled={props.isDeleting}
         />
+
         <DefaultButton
           text="Скасувати"
           onClick={props.onDismiss}
