@@ -295,6 +295,7 @@ export default class ServiceRequestForm extends React.Component<
     }
 
     const isCreateMode = !this.props.request;
+    const shouldValidateDatesAgainstCurrentTime = isCreateMode;
     const isCompletedStatus =
       status === requestStatuses.resolved || 
       status === requestStatuses.closed;
@@ -327,7 +328,10 @@ export default class ServiceRequestForm extends React.Component<
     const dueDateTime = dueDate ? new Date(dueDate).getTime() : undefined;
     const minimumDateTime = new Date(this.getMinimumDateTimeValue()).getTime();
     const isDueDateInvalid = dueDateTime === undefined || Number.isNaN(dueDateTime);
-    const isDueDateInPast = dueDateTime !== undefined && dueDateTime < minimumDateTime;
+    const isDueDateInPast =
+      shouldValidateDatesAgainstCurrentTime &&
+      dueDateTime !== undefined &&
+      dueDateTime < minimumDateTime;
 
     if (!dueDate) {
       errors.dueDate = 'Вкажіть кінцевий термін';
@@ -344,6 +348,7 @@ export default class ServiceRequestForm extends React.Component<
       );
     
     const isPlannedStartInPast =
+      shouldValidateDatesAgainstCurrentTime &&
       plannedStartTime !== undefined && 
       plannedStartTime < minimumDateTime;
 
@@ -477,6 +482,7 @@ export default class ServiceRequestForm extends React.Component<
     const subcategoryOptions: IDropdownOption[] = [];
     const availableStatusOptions = request ? statusOptions : statusOptions.slice(0, 2);
     const minimumDateTime = this.getMinimumDateTimeValue();
+    const dateTimeMinimum = request ? undefined : minimumDateTime;
 
     for (const category of categories) {
       const isAvailableCategory = category.IsActive || category.Id === request?.CategoryId;
@@ -623,7 +629,7 @@ export default class ServiceRequestForm extends React.Component<
           <TextField
             label="Плановий початок"
             type="datetime-local"
-            min={minimumDateTime}
+            min={dateTimeMinimum}
             value={plannedStart}
             errorMessage={validationErrors.plannedStart}
             onChange={this.handlePlannedStartChange}
@@ -633,7 +639,7 @@ export default class ServiceRequestForm extends React.Component<
             label="Кінцевий термін"
             required
             type="datetime-local"
-            min={minimumDateTime}
+            min={dateTimeMinimum}
             value={dueDate}
             errorMessage={validationErrors.dueDate}
             onChange={this.handleDueDateChange}
