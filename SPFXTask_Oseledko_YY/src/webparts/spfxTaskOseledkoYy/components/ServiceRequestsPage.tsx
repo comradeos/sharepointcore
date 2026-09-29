@@ -16,6 +16,11 @@ import {
   IServiceRequestDraft
 } from '../models/ServiceDeskModels';
 import ServiceDeskService from '../services/ServiceDeskService';
+import {
+  addListItems,
+  removeListItem,
+  replaceListItem
+} from '../utils/SharePointListUtils';
 import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
 import ServiceRequestView from './ServiceRequestView';
@@ -50,7 +55,11 @@ export default class ServiceRequestsPage extends React.Component<
   public constructor(props: IServiceRequestsPageProps) {
     super(props);
     this.service = new ServiceDeskService(props.spHttpClient, props.webUrl);
-    this.state = { isLoading: false, isCreateOpen: false, isDeleting: false };
+    this.state = {
+      isLoading: false,
+      isCreateOpen: false,
+      isDeleting: false
+    };
   }
 
   // запускає завантаження після появи вебчастини на сторінці
@@ -101,40 +110,53 @@ export default class ServiceRequestsPage extends React.Component<
     this.setState({ isCreateOpen: false });
   };
 
-  // створює заявку та оновлює таблицю після успішної відповіді
+  // створює заявку та додає її до локального списку
   private readonly handleCreateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
-    await this.service.createRequest(draft);
+    const createdRequest = await this.service.createRequest(draft);
 
-    this.setState({
+    this.setState(previousState => ({
+      data: previousState.data
+        ? {
+          ...previousState.data,
+          requests: addListItems(previousState.data.requests, [createdRequest])
+        }
+        : previousState.data,
       success: 'Заявку успішно створено',
       error: undefined
-    });
-
-    this.loadData();
+    }));
   };
 
-  // створює тестові заявки групами та один раз оновлює таблицю
+  // створює тестові заявки групами та додає їх до локального списку
   private readonly handleGenerateRequest = async (drafts: IServiceRequestDraft[]): Promise<void> => {
     try {
       const batchSize = 10;
+      const createdRequests: IServiceRequest[] = [];
 
       for (let startIndex = 0; startIndex < drafts.length; startIndex += batchSize) {
-        const createRequests: Array<Promise<void>> = [];
+        const createRequestPromises: Array<Promise<IServiceRequest>> = [];
         const batchEnd = Math.min(startIndex + batchSize, drafts.length);
 
         for (let draftIndex = startIndex; draftIndex < batchEnd; draftIndex += 1) {
-          createRequests.push(this.service.createRequest(drafts[draftIndex]));
+          createRequestPromises.push(this.service.createRequest(drafts[draftIndex]));
         }
 
-        await Promise.all(createRequests);
+        const createdBatch = await Promise.all(createRequestPromises);
+        createdRequests.push(...createdBatch);
       }
 
-      this.setState({
+      this.setState(previousState => ({
+        data: previousState.data
+          ? {
+            ...previousState.data,
+            requests: addListItems(
+              previousState.data.requests,
+              createdRequests
+            )
+          }
+          : previousState.data,
         success: `Створено заявок: ${drafts.length}`,
         error: undefined
-      });
-
-      this.loadData();
+      }));
     } catch (error) {
       this.setState({
         success: undefined,
@@ -176,7 +198,7 @@ export default class ServiceRequestsPage extends React.Component<
     this.setState({ editingRequest: undefined });
   };
 
-  // оновлює заявку та перезавантажує таблицю після успішної відповіді
+  // оновлює заявку та замінює її у локальному списку
   private readonly handleUpdateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
     const { editingRequest } = this.state;
 
@@ -184,14 +206,22 @@ export default class ServiceRequestsPage extends React.Component<
       throw new Error('Не вдалося визначити заявку для оновлення');
     }
 
-    await this.service.updateRequest(editingRequest.Id, draft);
+    const updatedRequest = await this.service.updateRequest(editingRequest.Id, draft);
 
-    this.setState({
+    this.setState(previousState => ({
+      data: previousState.data
+        ? {
+          ...previousState.data,
+          requests: replaceListItem(
+            previousState.data.requests,
+            updatedRequest,
+            'Id'
+          )
+        }
+        : previousState.data,
       success: 'Заявку успішно оновлено',
       error: undefined
-    });
-
-    this.loadData();
+    }));
   };
 
   // відкриває підтвердження видалення вибраної заявки
@@ -214,7 +244,7 @@ export default class ServiceRequestsPage extends React.Component<
     }
   };
 
-  // видаляє заявку та перезавантажує таблицю після успішної відповіді
+  // видаляє заявку та прибирає її з локального списку
   private readonly handleDeleteRequest = async (): Promise<void> => {
     const { deletingRequest } = this.state;
 
@@ -227,14 +257,22 @@ export default class ServiceRequestsPage extends React.Component<
     try {
       await this.service.deleteRequest(deletingRequest.Id);
 
-      this.setState({
+      this.setState(previousState => ({
+        data: previousState.data
+          ? {
+            ...previousState.data,
+            requests: removeListItem(
+              previousState.data.requests,
+              deletingRequest.Id,
+              'Id'
+            )
+          }
+          : previousState.data,
         deletingRequest: undefined,
         isDeleting: false,
         success: 'Заявку успішно видалено',
         error: undefined
-      });
-
-      this.loadData();
+      }));
     } catch (error) {
       this.setState({
         isDeleting: false,

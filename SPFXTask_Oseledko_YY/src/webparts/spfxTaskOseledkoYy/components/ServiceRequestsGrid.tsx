@@ -1,8 +1,23 @@
 import * as React from 'react';
-import { AllCommunityModule, ColDef, GridApi, GridReadyEvent, ModelUpdatedEvent, themeQuartz, ValueFormatterParams } from 'ag-grid-community';
+import {
+  AllCommunityModule,
+  ColDef,
+  GetRowIdParams,
+  GridApi,
+  GridReadyEvent,
+  ModelUpdatedEvent,
+  themeQuartz,
+  ValueFormatterParams
+} from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
 import { AgGridProvider, AgGridReact, CustomCellRendererProps } from 'ag-grid-react';
-import { DefaultButton, IconButton, SearchBox, Text, TooltipHost } from '@fluentui/react';
+import {
+  DefaultButton,
+  IconButton,
+  SearchBox,
+  Text,
+  TooltipHost
+} from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 import ServiceRequestChoiceFilter from './ServiceRequestChoiceFilter';
 import styles from './ServiceRequestsGrid.module.scss';
@@ -38,6 +53,12 @@ interface IRequestGridContext {
   onDelete: (request: IServiceRequest) => void;
 }
 
+// кеш одного перетвореного рядка таблиці
+interface ICachedRequestGridRow {
+  request: IServiceRequest;
+  row: IRequestGridRow;
+}
+
 const modules = [AllCommunityModule];
 const localeText = {
   ...AG_GRID_LOCALE_UA,
@@ -54,6 +75,7 @@ const hoursFormatter = new Intl.NumberFormat('uk-UA', {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1
 });
+
 // перетворює заявку sharepoint на рядок із назвами полів із довідників
 function toGridRow(request: IServiceRequest): IRequestGridRow {
   const parsedDueDate = Date.parse(request.DueDate);
@@ -72,6 +94,40 @@ function toGridRow(request: IServiceRequest): IRequestGridRow {
     dueDate: Number.isNaN(parsedDueDate) ? undefined : new Date(parsedDueDate),
     estimatedHours: request.EstimatedHours ?? undefined
   };
+}
+
+// повторно використовує незмінені рядки та перетворює тільки нові дані
+function getGridRows(
+  requests: IServiceRequest[],
+  rowCache: Map<number, ICachedRequestGridRow>
+): IRequestGridRow[] {
+  const activeRequestIds = new Set<number>();
+  const rows: IRequestGridRow[] = [];
+
+  for (const request of requests) {
+    activeRequestIds.add(request.Id);
+
+    const cachedRow = rowCache.get(request.Id);
+    const row = cachedRow?.request === request
+      ? cachedRow.row
+      : toGridRow(request);
+
+    rowCache.set(request.Id, { request, row });
+    rows.push(row);
+  }
+
+  for (const requestId of Array.from(rowCache.keys())) {
+    if (!activeRequestIds.has(requestId)) {
+      rowCache.delete(requestId);
+    }
+  }
+
+  return rows;
+}
+
+// повертає стабільний ідентифікатор рядка для локального оновлення ag grid
+function getRequestRowId(params: GetRowIdParams<IRequestGridRow>): string {
+  return String(params.data.id);
 }
 
 // показує кнопки дій для одного рядка таблиці
@@ -262,14 +318,14 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
   const [searchText, setSearchText] = React.useState('');
   const [visibleCount, setVisibleCount] = React.useState(props.requests.length);
   const gridApi = React.useRef<GridApi<IRequestGridRow>>();
-  const rows = props.requests.map(toGridRow);
+  const rowCache = React.useRef<Map<number, ICachedRequestGridRow>>(new Map());
+  const rows = getGridRows(props.requests, rowCache.current);
 
   const gridContext: IRequestGridContext = {
     onView: props.onView,
     onEdit: props.onEdit,
     onDelete: props.onDelete
   };
-
   // зберігає введений текст загального пошуку
   const handleSearchChange = (_event?: React.ChangeEvent<HTMLInputElement>, value?: string): void => {
     setSearchText(value || '');
@@ -317,6 +373,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
       <div className={styles.grid}>
         <AgGridReact<IRequestGridRow>
           rowData={rows}
+          getRowId={getRequestRowId}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           localeText={localeText}

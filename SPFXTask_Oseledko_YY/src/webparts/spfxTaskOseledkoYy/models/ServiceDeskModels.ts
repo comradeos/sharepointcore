@@ -73,3 +73,5 @@ export interface IServiceDeskData {
   subcategories: IRequestSubcategory[];
   requests: IServiceRequest[];
 }
+
+// діапазон локальних дат створення заявок
