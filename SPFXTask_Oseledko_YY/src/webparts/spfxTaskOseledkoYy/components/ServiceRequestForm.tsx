@@ -14,6 +14,7 @@ export interface IServiceRequestFormProps {
   subcategories: IRequestSubcategory[];
   peoplePickerContext: IPeoplePickerContext;
   currentUserEmail: string;
+  isEditLockValid?: boolean;
   onSubmit: (draft: IServiceRequestDraft) => Promise<void>;
 }
 
@@ -472,7 +473,9 @@ export default class ServiceRequestForm extends React.Component<
 
   // показує поля форми та обмежує підкатегорії вибраною категорією
   public render(): React.ReactElement<IServiceRequestFormProps> {
-    const { categories, subcategories, peoplePickerContext, currentUserEmail, request } = this.props;
+    const {
+      categories, subcategories, peoplePickerContext, currentUserEmail, request, isEditLockValid
+    } = this.props;
     const {
       title, description, categoryId, subcategoryId, status, priority,
       plannedStart, dueDate, estimatedHours, contactEmail, requiresOnsiteVisit,
@@ -483,6 +486,8 @@ export default class ServiceRequestForm extends React.Component<
     const availableStatusOptions = request ? statusOptions : statusOptions.slice(0, 2);
     const minimumDateTime = this.getMinimumDateTimeValue();
     const dateTimeMinimum = request ? undefined : minimumDateTime;
+    const isEditLockInvalid = Boolean(request) && !isEditLockValid;
+    const isSubmitDisabled = isSubmitting || isEditLockInvalid;
 
     for (const category of categories) {
       const isAvailableCategory = category.IsActive || category.Id === request?.CategoryId;
@@ -540,6 +545,12 @@ export default class ServiceRequestForm extends React.Component<
 
           {submitError && (
             <MessageBar messageBarType={MessageBarType.error}>{submitError}</MessageBar>
+          )}
+
+          {isEditLockInvalid && (
+            <MessageBar messageBarType={MessageBarType.warning}>
+              Не вдалося підтвердити блокування заявки Закрийте форму та відкрийте заявку повторно
+            </MessageBar>
           )}
 
           <TextField 
@@ -675,7 +686,7 @@ export default class ServiceRequestForm extends React.Component<
           <PrimaryButton
             text={request ? 'Зберегти' : 'Створити'}
             onClick={this.handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitDisabled}
           />
 
           <DefaultButton

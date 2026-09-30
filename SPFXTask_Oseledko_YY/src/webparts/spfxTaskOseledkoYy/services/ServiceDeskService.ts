@@ -2,6 +2,7 @@ import { SPHttpClient } from '@microsoft/sp-http';
 import {
   IRequestCategory,
   IRequestCreatedDateRange,
+  IRequestEditSession,
   IRequestPageCursor,
   IRequestSubcategory,
   IServiceDeskDictionaries,
@@ -40,6 +41,16 @@ interface IServiceRequestPayload {
   RequiresOnsiteVisit: boolean;
 }
 
+// поля потрібні для тимчасового блокування редагування заявки
+interface IRequestEditLockPayload {
+  EditLockOwnerId?: SharePointNullable<number>;
+  EditLockExpiresAt?: SharePointNullable<string>;
+  EditLockToken?: SharePointNullable<string>;
+}
+
+// дані для часткового оновлення заявки та керування її блокуванням
+type IServiceRequestUpdatePayload = Partial<IServiceRequestPayload> & IRequestEditLockPayload;
+
 const serviceRequestSelectFields = [
   'Id', 'Title', 'Description',
   'CategoryId', 'Category/Id', 'Category/Title',
@@ -48,17 +59,21 @@ const serviceRequestSelectFields = [
   'RequesterId', 'Requester/Id', 'Requester/Title', 'Requester/EMail',
   'AssigneeId', 'Assignee/Id', 'Assignee/Title', 'Assignee/EMail',
   'PlannedStart', 'DueDate', 'EstimatedHours', 'ContactEmail',
-  'RequiresOnsiteVisit', 'Created'
+  'RequiresOnsiteVisit', 'Created',
+  'EditLockOwnerId', 'EditLockOwner/Id', 'EditLockOwner/Title', 'EditLockOwner/EMail',
+  'EditLockExpiresAt', 'EditLockToken'
 ];
 
 const serviceRequestExpandFields = [
   'Category',
   'Subcategory',
   'Requester',
-  'Assignee'
+  'Assignee',
+  'EditLockOwner'
 ];
 const initialRequestsPageSize = 50;
 const requestIdBlockSize = 4000;
+const editLockDurationMinutes = 5;
 
 // читає заявки та довідники із сайту де розміщена вебчастина
 export default class ServiceDeskService {
@@ -66,7 +81,7 @@ export default class ServiceDeskService {
   private readonly categoriesList: SharePointListUtils<IRequestCategory>;
   private readonly subcategoriesList: SharePointListUtils<IRequestSubcategory>;
   private readonly requestMetadataList: SharePointListUtils<IRequestDateMetadata>;
-  private readonly requestsList: SharePointListUtils<IServiceRequest, IServiceRequestPayload>;
+  private readonly requestsList: SharePointListUtils<IServiceRequest, IServiceRequestUpdatePayload>;
 
   // зберігає клієнт spfx та адресу поточного сайту для всіх запитів
   public constructor(
@@ -106,7 +121,7 @@ export default class ServiceDeskService {
         pageSize: requestIdBlockSize
       }
     );
-    this.requestsList = new SharePointListUtils<IServiceRequest, IServiceRequestPayload>(
+    this.requestsList = new SharePointListUtils<IServiceRequest, IServiceRequestUpdatePayload>(
       client,
       webUrl,
       {
@@ -380,16 +395,228 @@ export default class ServiceDeskService {
   // оновлює наявну заявку у списку servicerequests
   public async updateRequest(
     itemId: number,
-    draft: IServiceRequestDraft
+    draft: IServiceRequestDraft,
+    editLockToken: string
   ): Promise<IServiceRequest> {
+    const lockedRequest = await this.requestsList.getByIdWithETag(itemId);
+    this.ensureEditLockOwnership(lockedRequest.item, editLockToken);
     const payload = await this.createRequestPayload(draft);
 
-    return this.requestsList.update(itemId, payload);
+    try {
+      return await this.requestsList.update(itemId, {
+        ...payload,
+        ...this.createEmptyEditLockPayload()
+      }, lockedRequest.eTag);
+    } catch (error) {
+      const isRequestChangedDuringSave = this.isVersionConflictError(error);
+      const requestSaveConflictErrorMessage = 'Заявку було змінено під час збереження Відкрийте її для редагування ще раз';
+
+      if (isRequestChangedDuringSave) {
+        throw new Error(requestSaveConflictErrorMessage);
+      }
+
+      throw error;
+    }
+  }
+
+  // захоплює тимчасове блокування заявки для поточної вкладки
+  public async acquireEditLock(
+    itemId: number,
+    currentUserEmail: string
+  ): Promise<IRequestEditSession> {
+    const normalizedUserEmail = currentUserEmail.trim();
+    const isCurrentUserEmailMissing = !normalizedUserEmail;
+    const missingCurrentUserEmailErrorMessage = 'Не вдалося визначити поточного користувача для редагування заявки';
+
+    if (isCurrentUserEmailMissing) {
+      throw new Error(missingCurrentUserEmailErrorMessage);
+    }
+
+    const currentUserId = await this.ensureUser(normalizedUserEmail);
+
+    return this.tryAcquireEditLock(itemId, currentUserId, 0);
+  }
+
+  // продовжує блокування відкритої форми редагування
+  public async renewEditLock(itemId: number, editLockToken: string): Promise<void> {
+    const lockedRequest = await this.requestsList.getByIdWithETag(itemId);
+    this.ensureEditLockOwnership(lockedRequest.item, editLockToken);
+
+    await this.updateEditLockExpiry(itemId, lockedRequest.eTag);
+  }
+
+  // знімає блокування якщо воно належить поточній вкладці
+  public async releaseEditLock(itemId: number, editLockToken: string): Promise<void> {
+    const lockedRequest = await this.requestsList.getByIdWithETag(itemId);
+    const isLockOwnedByCurrentTab = lockedRequest.item.EditLockToken === editLockToken;
+
+    if (!isLockOwnedByCurrentTab) {
+      return;
+    }
+
+    try {
+      await this.requestsList.update(
+        itemId,
+        this.createEmptyEditLockPayload(),
+        lockedRequest.eTag
+      );
+    } catch (error) {
+      const isLockAlreadyChanged = this.isVersionConflictError(error);
+
+      if (!isLockAlreadyChanged) {
+        throw error;
+      }
+    }
   }
 
   // видаляє заявку зі списку servicerequests
   public async deleteRequest(itemId: number): Promise<void> {
     await this.requestsList.delete(itemId);
+  }
+
+  // намагається захопити блокування та повторює читання після конфлікту версії
+  private async tryAcquireEditLock(
+    itemId: number,
+    currentUserId: number,
+    attemptNumber: number
+  ): Promise<IRequestEditSession> {
+    const requestWithETag = await this.requestsList.getByIdWithETag(itemId);
+    const hasActiveEditLock = this.hasActiveEditLock(requestWithETag.item);
+
+    if (hasActiveEditLock) {
+      throw new Error(this.getActiveEditLockErrorMessage(requestWithETag.item));
+    }
+
+    const editLockToken = this.createEditLockToken();
+    const editLockPayload: IRequestEditLockPayload = {
+      EditLockOwnerId: currentUserId,
+      EditLockExpiresAt: this.getNextEditLockExpiry().toISOString(),
+      EditLockToken: editLockToken
+    };
+
+    try {
+      await this.requestsList.update(itemId, editLockPayload, requestWithETag.eTag);
+    } catch (error) {
+      const canRetryAfterVersionConflict = attemptNumber === 0 && this.isVersionConflictError(error);
+
+      if (canRetryAfterVersionConflict) {
+        return this.tryAcquireEditLock(itemId, currentUserId, attemptNumber + 1);
+      }
+
+      throw error;
+    }
+
+    const lockedRequest = await this.requestsList.getById(itemId);
+    const isLockTokenStored = lockedRequest.EditLockToken === editLockToken;
+    const editLockWasNotStoredErrorMessage = 'Не вдалося встановити блокування заявки Спробуйте відкрити її ще раз';
+
+    if (!isLockTokenStored) {
+      throw new Error(editLockWasNotStoredErrorMessage);
+    }
+
+    return { request: lockedRequest, token: editLockToken };
+  }
+
+  // перевіряє що блокування належить поточній вкладці та не завершилося
+  private ensureEditLockOwnership(request: IServiceRequest, editLockToken: string): void {
+    const isLockOwnedByCurrentTab = request.EditLockToken === editLockToken;
+    const hasActiveEditLock = this.hasActiveEditLock(request);
+    const isEditLockInvalid = !isLockOwnedByCurrentTab || !hasActiveEditLock;
+    const invalidEditLockErrorMessage = 'Блокування заявки завершилося або було змінено іншим користувачем Відкрийте заявку для редагування ще раз';
+
+    if (isEditLockInvalid) {
+      throw new Error(invalidEditLockErrorMessage);
+    }
+  }
+
+  // перевіряє чи має заявка незавершене блокування редагування
+  private hasActiveEditLock(request: IServiceRequest): boolean {
+    const lockExpiryDate = request.EditLockExpiresAt
+      ? new Date(request.EditLockExpiresAt)
+      : undefined;
+    const isLockExpiryDateValid = lockExpiryDate !== undefined
+      && !Number.isNaN(lockExpiryDate.getTime());
+    const isLockExpired = !isLockExpiryDateValid || lockExpiryDate <= new Date();
+    const hasLockOwner = Boolean(request.EditLockOwner);
+    const hasLockToken = Boolean(request.EditLockToken?.trim());
+
+    return hasLockOwner && hasLockToken && !isLockExpired;
+  }
+
+  // створює текст повідомлення про активне блокування заявки
+  private getActiveEditLockErrorMessage(request: IServiceRequest): string {
+    const lockOwnerName = request.EditLockOwner?.Title || 'інший користувач';
+    const lockExpiryDate = request.EditLockExpiresAt
+      ? new Date(request.EditLockExpiresAt)
+      : undefined;
+    const lockExpiryText = lockExpiryDate && !Number.isNaN(lockExpiryDate.getTime())
+      ? lockExpiryDate.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+      : 'невідомого часу';
+
+    return `Заявку редагує ${lockOwnerName} до ${lockExpiryText}`;
+  }
+
+  // повертає дату завершення нового або продовженого блокування
+  private getNextEditLockExpiry(): Date {
+    const lockExpiryDate = new Date();
+    lockExpiryDate.setMinutes(lockExpiryDate.getMinutes() + editLockDurationMinutes);
+
+    return lockExpiryDate;
+  }
+
+  // продовжує строк блокування та пояснює конфлікт версії користувачу
+  private async updateEditLockExpiry(itemId: number, eTag: string): Promise<void> {
+    try {
+      await this.requestsList.update(itemId, {
+        EditLockExpiresAt: this.getNextEditLockExpiry().toISOString()
+      }, eTag);
+    } catch (error) {
+      const isLockChangedByAnotherRequest = this.isVersionConflictError(error);
+      const editLockRenewalErrorMessage = 'Не вдалося продовжити блокування заявки Перевірте стан заявки та відкрийте її повторно';
+
+      if (isLockChangedByAnotherRequest) {
+        throw new Error(editLockRenewalErrorMessage);
+      }
+
+      throw error;
+    }
+  }
+
+  // створює значення для очищення всіх полів блокування
+  private createEmptyEditLockPayload(): IRequestEditLockPayload {
+    return {
+      EditLockOwnerId: null,
+      EditLockExpiresAt: null,
+      EditLockToken: null
+    };
+  }
+
+  // створює випадковий ключ для однієї вкладки редагування
+  private createEditLockToken(): string {
+    const randomBytes = new Uint8Array(16);
+    crypto.getRandomValues(randomBytes);
+    randomBytes[6] = (randomBytes[6] & 0x0f) | 0x40;
+    randomBytes[8] = (randomBytes[8] & 0x3f) | 0x80;
+    const hexadecimalBytes = Array.from(randomBytes, byte => {
+      const hexadecimalByte = byte.toString(16);
+
+      return hexadecimalByte.length === 1
+        ? `0${hexadecimalByte}`
+        : hexadecimalByte;
+    });
+
+    return [
+      hexadecimalBytes.slice(0, 4).join(''),
+      hexadecimalBytes.slice(4, 6).join(''),
+      hexadecimalBytes.slice(6, 8).join(''),
+      hexadecimalBytes.slice(8, 10).join(''),
+      hexadecimalBytes.slice(10, 16).join('')
+    ].join('-');
+  }
+
+  // перевіряє чи пов'язана помилка з одночасною зміною елемента
+  private isVersionConflictError(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('HTTP 412');
   }
 
   // готує поля заявки та визначає ідентифікатори користувачів

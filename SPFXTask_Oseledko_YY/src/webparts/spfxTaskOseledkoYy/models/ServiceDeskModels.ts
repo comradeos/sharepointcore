@@ -49,6 +49,10 @@ export interface IServiceRequest {
   EstimatedHours: SharePointNullable<number>;
   ContactEmail: SharePointNullable<string>;
   RequiresOnsiteVisit: boolean;
+  EditLockOwnerId: SharePointNullable<number>;
+  EditLockOwner: SharePointNullable<IPersonValue>;
+  EditLockExpiresAt: SharePointNullable<string>;
+  EditLockToken: SharePointNullable<string>;
 }
 
 // перевірені дані форми для створення заявки
@@ -98,4 +102,10 @@ export interface IRequestPageCursor {
 export interface IServiceRequestPage {
   requests: IServiceRequest[];
   cursor?: IRequestPageCursor;
+}
+
+// активна сесія редагування однієї заявки
+export interface IRequestEditSession {
+  request: IServiceRequest;
+  token: string;
 }

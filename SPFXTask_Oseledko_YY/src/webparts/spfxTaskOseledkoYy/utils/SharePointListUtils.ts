@@ -33,6 +33,12 @@ export interface ISharePointListPage<TItem> {
   nextPageUrl?: string;
 }
 
+// елемент списку та його версія для захисту від паралельних змін
+export interface ISharePointListItemWithETag<TItem> {
+  item: TItem;
+  eTag: string;
+}
+
 // сторінка результатів sharepoint rest api без службових метаданих
 interface IODataPage<TItem> {
   value: TItem[];
@@ -121,6 +127,13 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
 
   // читає один елемент списку за його числовим ідентифікатором
   public async getById(itemId: number): Promise<TItem> {
+    const itemWithETag = await this.getByIdWithETag(itemId);
+
+    return itemWithETag.item;
+  }
+
+  // читає елемент списку разом з версією для безпечного оновлення
+  public async getByIdWithETag(itemId: number): Promise<ISharePointListItemWithETag<TItem>> {
     this.validateItemId(itemId);
 
     const response = await this.client.get(
@@ -137,7 +150,16 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       throw new Error(`Елемент списку ${this.options.listTitle} з ідентифікатором ${itemId} не знайдено`);
     }
 
-    return item;
+    const responseETag = response.headers.get('ETag');
+    const eTag = responseETag?.trim();
+    const isETagMissing = !eTag;
+    const missingETagErrorMessage = `SharePoint не повернув версію елемента списку ${this.options.listTitle}`;
+
+    if (isETagMissing) {
+      throw new Error(missingETagErrorMessage);
+    }
+
+    return { item, eTag };
   }
 
   // створює елемент та повертає його актуальні дані зі списку
@@ -167,8 +189,18 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
   }
 
   // оновлює елемент та повертає його актуальні дані зі списку
-  public async update(itemId: number, payload: TPayload): Promise<TItem> {
+  public async update(
+    itemId: number,
+    payload: TPayload,
+    eTag: string = matchAnyVersion
+  ): Promise<TItem> {
     this.validateItemId(itemId);
+    const isETagEmpty = !eTag.trim();
+    const emptyETagErrorMessage = 'Версія елемента не може бути порожньою';
+
+    if (isETagEmpty) {
+      throw new Error(emptyETagErrorMessage);
+    }
 
     const response = await this.client.post(
       this.getItemUrl(itemId, false),
@@ -176,7 +208,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       {
         headers: {
           ...jsonHeaders,
-          'IF-MATCH': matchAnyVersion,
+          'IF-MATCH': eTag,
           'X-HTTP-Method': 'MERGE'
         },
         body: JSON.stringify(payload)

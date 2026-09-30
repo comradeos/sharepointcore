@@ -14,6 +14,7 @@ import styles from './ServiceRequestsPage.module.scss';
 import { IServiceRequestsPageProps } from './IServiceRequestsPageProps';
 import {
   IRequestCreatedDateRange,
+  IRequestEditSession,
   IRequestPageCursor,
   IServiceDeskDictionaries,
   IServiceDeskData,
@@ -35,6 +36,7 @@ import ServiceRequestGenerator from './ServiceRequestGenerator';
 
 const backgroundRequestsPageSize = 1000;
 const backgroundRequestsDelay = 3000;
+const editLockRenewalInterval = 60 * 1000;
 
 // стан екрана сервісних заявок
 interface IServiceRequestsPageState {
@@ -50,6 +52,9 @@ interface IServiceRequestsPageState {
   isCreateOpen: boolean;
   selectedRequest?: IServiceRequest;
   editingRequest?: IServiceRequest;
+  editSession?: IRequestEditSession;
+  isAcquiringEditLock: boolean;
+  isEditLockValid: boolean;
   deletingRequest?: IServiceRequest;
   isDeleting: boolean;
   deleteError?: string;
@@ -65,6 +70,8 @@ export default class ServiceRequestsPage extends React.Component<
   private readonly service: ServiceDeskService;
   private backgroundRequestsTimeout?: ReturnType<typeof setTimeout>;
   private backgroundRequestsVersion = 0;
+  private editLockRenewalTimer?: ReturnType<typeof setInterval>;
+  private isEditLockRenewalInProgress = false;
 
   // створює сервіс для сайту вебчастини та початковий стан екрана
   public constructor(props: IServiceRequestsPageProps) {
@@ -80,6 +87,8 @@ export default class ServiceRequestsPage extends React.Component<
       isLoadingMoreRequests: false,
       isCountingRequests: false,
       isCreateOpen: false,
+      isAcquiringEditLock: false,
+      isEditLockValid: false,
       isDeleting: false
     };
   }
@@ -92,6 +101,8 @@ export default class ServiceRequestsPage extends React.Component<
   // зупиняє фонові запити перед видаленням вебчастини зі сторінки
   public componentWillUnmount(): void {
     this.cancelBackgroundRequestsLoading();
+    this.stopEditLockRenewal();
+    this.releaseActiveEditLock();
   }
 
   // завантажує довідники без читання великого списку заявок
@@ -477,32 +488,80 @@ export default class ServiceRequestsPage extends React.Component<
     this.setState({ selectedRequest: undefined });
   };
 
-  // відкриває вибрану заявку у режимі редагування
-  private readonly handleOpenEdit = (request: IServiceRequest): void => {
+  // захоплює блокування та відкриває вибрану заявку у режимі редагування
+  private readonly handleOpenEdit = async (request: IServiceRequest): Promise<void> => {
+    if (this.state.isAcquiringEditLock) {
+      return;
+    }
+
     this.setState({
       isCreateOpen: false,
       selectedRequest: undefined,
-      editingRequest: request,
+      isAcquiringEditLock: true,
+      isEditLockValid: false,
       deletingRequest: undefined,
-      success: undefined
+      success: undefined,
+      error: undefined
     });
+
+    try {
+      const editSession = await this.service.acquireEditLock(
+        request.Id,
+        this.props.currentUserEmail
+      );
+
+      this.setState({
+        editingRequest: editSession.request,
+        editSession,
+        isAcquiringEditLock: false,
+        isEditLockValid: true
+      }, this.startEditLockRenewal);
+    } catch (error) {
+      this.setState({
+        isAcquiringEditLock: false,
+        isEditLockValid: false,
+        error: error instanceof Error
+          ? error.message
+          : 'Не вдалося заблокувати заявку для редагування'
+      });
+    }
   };
 
-  // закриває форму редагування заявки
+  // закриває форму редагування та звільняє блокування заявки
   private readonly handleCloseEdit = (): void => {
-    this.setState({ editingRequest: undefined });
+    this.releaseActiveEditLock();
+    this.stopEditLockRenewal();
+    this.setState({
+      editingRequest: undefined,
+      editSession: undefined,
+      isEditLockValid: false
+    });
   };
 
   // оновлює заявку та замінює її у локальному списку
   private readonly handleUpdateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
-    const { editingRequest } = this.state;
+    const { editingRequest, editSession, isEditLockValid } = this.state;
 
-    if (!editingRequest) {
-      throw new Error('Не вдалося визначити заявку для оновлення');
+    const isEditSessionMissing = !editingRequest || !editSession || !isEditLockValid;
+    const missingEditSessionErrorMessage = 'Блокування заявки недійсне Відкрийте заявку для редагування ще раз';
+    const isEditLockRenewalInProgress = this.isEditLockRenewalInProgress;
+    const editLockRenewalInProgressErrorMessage = 'Зачекайте завершення продовження блокування та збережіть заявку ще раз';
+
+    if (isEditSessionMissing) {
+      throw new Error(missingEditSessionErrorMessage);
     }
 
-    const updatedRequest = await this.service.updateRequest(editingRequest.Id, draft);
+    if (isEditLockRenewalInProgress) {
+      throw new Error(editLockRenewalInProgressErrorMessage);
+    }
 
+    const updatedRequest = await this.service.updateRequest(
+      editingRequest.Id,
+      draft,
+      editSession.token
+    );
+
+    this.stopEditLockRenewal();
     this.setState(previousState => ({
       data: previousState.data
         ? {
@@ -514,10 +573,64 @@ export default class ServiceRequestsPage extends React.Component<
           )
         }
         : previousState.data,
+      editingRequest: undefined,
+      editSession: undefined,
+      isEditLockValid: false,
       success: 'Заявку успішно оновлено',
       error: undefined
     }));
   };
+
+  // запускає періодичне продовження блокування відкритої форми
+  private startEditLockRenewal = (): void => {
+    this.stopEditLockRenewal();
+    this.editLockRenewalTimer = setInterval(this.renewEditLock, editLockRenewalInterval);
+  };
+
+  // зупиняє періодичне продовження блокування
+  private stopEditLockRenewal(): void {
+    if (this.editLockRenewalTimer) {
+      clearInterval(this.editLockRenewalTimer);
+      this.editLockRenewalTimer = undefined;
+    }
+  }
+
+  // продовжує строк блокування поки користувач редагує заявку
+  private readonly renewEditLock = async (): Promise<void> => {
+    const { editSession } = this.state;
+    const cannotRenewEditLock = !editSession || this.isEditLockRenewalInProgress;
+
+    if (cannotRenewEditLock) {
+      return;
+    }
+
+    this.isEditLockRenewalInProgress = true;
+
+    try {
+      await this.service.renewEditLock(editSession.request.Id, editSession.token);
+      this.setState({ isEditLockValid: true });
+    } catch (error) {
+      this.stopEditLockRenewal();
+      this.setState({
+        isEditLockValid: false,
+        error: error instanceof Error
+          ? error.message
+          : 'Не вдалося продовжити блокування заявки'
+      });
+    } finally {
+      this.isEditLockRenewalInProgress = false;
+    }
+  };
+
+  // звільняє блокування поточної форми без очікування відповіді сервера
+  private releaseActiveEditLock(): void {
+    const { editSession } = this.state;
+
+    if (editSession) {
+      this.service.releaseEditLock(editSession.request.Id, editSession.token)
+        .catch(() => undefined);
+    }
+  }
 
   // відкриває підтвердження видалення вибраної заявки
   private readonly handleOpenDelete = (request: IServiceRequest): void => {
@@ -653,6 +766,10 @@ export default class ServiceRequestsPage extends React.Component<
 
         {isLoading && <Spinner className={styles.loading} label="Завантажуємо дані..." />}
 
+        {this.state.isAcquiringEditLock && (
+          <Spinner className={styles.loading} label="Перевіряємо блокування заявки..." />
+        )}
+
         {error && (
           <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.error}>
             {error}
@@ -716,6 +833,7 @@ export default class ServiceRequestsPage extends React.Component<
                 subcategories={data.subcategories}
                 peoplePickerContext={this.props.peoplePickerContext}
                 currentUserEmail={this.props.currentUserEmail}
+                isEditLockValid={this.state.isEditLockValid}
                 onSubmit={this.handleUpdateRequest}
               />
             )}
