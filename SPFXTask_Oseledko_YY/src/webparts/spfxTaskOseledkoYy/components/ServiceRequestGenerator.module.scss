@@ -1,5 +1,13 @@
+.generatorControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  width: 100%;
+  gap: 12px;
+}
+
 .countField {
-  width: 324px;
+  width: 100%;
 }
 
 .generateButton {

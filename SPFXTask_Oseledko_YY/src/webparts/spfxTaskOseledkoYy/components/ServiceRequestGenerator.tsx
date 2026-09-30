@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { DefaultButton, Stack, TextField } from '@fluentui/react';
+import { DefaultButton, TextField } from '@fluentui/react';
 import { IRequestCategory, IRequestSubcategory, IServiceRequestDraft } from '../models/ServiceDeskModels';
 import { requestPriorities, requestStatuses } from '../models/ServiceDeskConstants';
 import styles from './ServiceRequestGenerator.module.scss';
@@ -161,7 +161,7 @@ export default function ServiceRequestGenerator(
   };
 
   return (
-    <Stack horizontal verticalAlign="start" tokens={{ childrenGap: 12 }}>
+    <div className={styles.generatorControls}>
       <TextField
         type="number"
         min={1}
@@ -185,6 +185,6 @@ export default function ServiceRequestGenerator(
         onClick={handleGenerate}
         disabled={props.disabled || isGenerating || categoryPairs.length === 0 || generationCount === undefined}
       />
-    </Stack>
+    </div>
   );
 }

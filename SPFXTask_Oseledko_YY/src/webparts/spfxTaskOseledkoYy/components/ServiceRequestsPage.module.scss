@@ -19,23 +19,24 @@
 }
 
 .dateFilterActions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: flex-end;
   width: 100%;
   gap: 12px;
 }
 
 .wideActionButton {
-  width: 468px;
+  width: 100%;
 }
 
 .createdDateFilter {
-  width: 170px;
+  width: 100%;
 }
 
 .refreshButton {
   margin-bottom: 5px;
+  min-width: 130px;
 }
 
 .content {
@@ -57,16 +58,16 @@
   }
 
   .createdDateFilter {
-    flex: 1 1 160px;
+    width: 100%;
   }
 
-  .dateFilterActions > button {
-    flex: 1 1 140px;
+  .dateFilterActions {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 380px) {
   .dateFilterActions > button {
-    flex-basis: 100%;
+    width: 100%;
   }
 }
