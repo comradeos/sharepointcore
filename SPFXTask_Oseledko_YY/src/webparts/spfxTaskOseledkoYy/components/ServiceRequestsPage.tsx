@@ -14,7 +14,6 @@ import styles from './ServiceRequestsPage.module.scss';
 import { IServiceRequestsPageProps } from './IServiceRequestsPageProps';
 import {
   IRequestCreatedDateRange,
-  IRequestEditSession,
   IRequestPageCursor,
   IServiceDeskDictionaries,
   IServiceDeskData,
@@ -25,8 +24,12 @@ import {
 import ServiceDeskService from '../services/ServiceDeskService';
 import {
   addListItems,
+  ISharePointBackgroundPage,
+  ISharePointListEditSession,
   removeListItem,
-  replaceListItem
+  replaceListItem,
+  SharePointBackgroundPageLoader,
+  SharePointEditLockRenewal
 } from '../utils/SharePointListUtils';
 import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
@@ -43,16 +46,15 @@ interface IServiceRequestsPageState {
   data?: IServiceDeskData;
   createdFrom: Date;
   createdTo: Date;
-  nextRequestsPageCursor?: IRequestPageCursor;
   hasLoadedRequests: boolean;
   isLoading: boolean;
-  isLoadingMoreRequests: boolean;
+  isBackgroundRequestsLoading: boolean;
   isCountingRequests: boolean;
   totalRequests?: number;
   isCreateOpen: boolean;
   selectedRequest?: IServiceRequest;
   editingRequest?: IServiceRequest;
-  editSession?: IRequestEditSession;
+  editSession?: ISharePointListEditSession<IServiceRequest>;
   isAcquiringEditLock: boolean;
   isEditLockValid: boolean;
   deletingRequest?: IServiceRequest;
@@ -68,15 +70,32 @@ export default class ServiceRequestsPage extends React.Component<
   IServiceRequestsPageState
 > {
   private readonly service: ServiceDeskService;
-  private backgroundRequestsTimeout?: ReturnType<typeof setTimeout>;
-  private backgroundRequestsVersion = 0;
-  private editLockRenewalTimer?: ReturnType<typeof setInterval>;
-  private isEditLockRenewalInProgress = false;
+  private readonly backgroundRequestsLoader: SharePointBackgroundPageLoader<
+    IServiceRequest,
+    IRequestPageCursor
+  >;
+  private editLockRenewal?: SharePointEditLockRenewal;
 
   // створює сервіс для сайту вебчастини та початковий стан екрана
   public constructor(props: IServiceRequestsPageProps) {
     super(props);
     this.service = new ServiceDeskService(props.spHttpClient, props.webUrl);
+    this.backgroundRequestsLoader = new SharePointBackgroundPageLoader({
+      delayMilliseconds: backgroundRequestsDelay,
+      pageSize: backgroundRequestsPageSize,
+      loadPage: async (cursor, pageSize) => {
+        const page = await this.service.loadRequestsPage(
+          { from: this.state.createdFrom, to: this.state.createdTo },
+          cursor,
+          pageSize
+        );
+
+        return { items: page.requests, cursor: page.cursor };
+      },
+      onPageLoaded: this.handleBackgroundRequestsPageLoadSuccess,
+      onError: this.handleBackgroundRequestsPageLoadError,
+      onCompleted: this.handleBackgroundRequestsLoadComplete
+    });
     const currentDate = this.getCurrentDate();
 
     this.state = {
@@ -84,7 +103,7 @@ export default class ServiceRequestsPage extends React.Component<
       createdTo: currentDate,
       hasLoadedRequests: false,
       isLoading: false,
-      isLoadingMoreRequests: false,
+      isBackgroundRequestsLoading: false,
       isCountingRequests: false,
       isCreateOpen: false,
       isAcquiringEditLock: false,
@@ -100,7 +119,7 @@ export default class ServiceRequestsPage extends React.Component<
 
   // зупиняє фонові запити перед видаленням вебчастини зі сторінки
   public componentWillUnmount(): void {
-    this.cancelBackgroundRequestsLoading();
+    this.backgroundRequestsLoader.cancel();
     this.stopEditLockRenewal();
     this.releaseActiveEditLock();
   }
@@ -130,7 +149,7 @@ export default class ServiceRequestsPage extends React.Component<
   private loadRequests(createdDateRange: IRequestCreatedDateRange): void {
     this.setState({
       isLoading: true,
-      isLoadingMoreRequests: false,
+      isBackgroundRequestsLoading: false,
       isCountingRequests: false,
       totalRequests: undefined,
       error: undefined
@@ -149,84 +168,53 @@ export default class ServiceRequestsPage extends React.Component<
           requests: page.requests
         }
         : previousState.data,
-      nextRequestsPageCursor: page.cursor,
       hasLoadedRequests: true,
       isLoading: false,
+      isBackgroundRequestsLoading: Boolean(page.cursor),
       isCountingRequests: Boolean(page.cursor)
     }), () => {
-      this.startRequestsCount();
-      this.scheduleBackgroundRequestsLoading();
+      const backgroundLoadingVersion = page.cursor
+        ? this.backgroundRequestsLoader.start(page.cursor)
+        : this.backgroundRequestsLoader.getVersion();
+
+      this.startRequestsCount(backgroundLoadingVersion);
     });
   };
 
-  // завантажує наступну фонову частину заявок
-  private readonly loadNextRequestsPage = (): void => {
-    const { createdFrom, createdTo, isLoadingMoreRequests, nextRequestsPageCursor } = this.state;
-    const canLoadNextRequestsPage = Boolean(nextRequestsPageCursor) && !isLoadingMoreRequests;
-
-    if (!canLoadNextRequestsPage || !nextRequestsPageCursor) {
-      return;
-    }
-
-    this.setState({ isLoadingMoreRequests: true, error: undefined });
-    const currentBackgroundRequestsVersion = this.backgroundRequestsVersion;
-
-    this.service.loadRequestsPage(
-      { from: createdFrom, to: createdTo },
-      nextRequestsPageCursor,
-      backgroundRequestsPageSize
-    )
-      .then(page => this.handleNextRequestsPageLoadSuccess(
-        page,
-        currentBackgroundRequestsVersion
-      ))
-      .catch(error => this.handleNextRequestsPageLoadError(
-        error,
-        currentBackgroundRequestsVersion
-      ));
-  };
-
   // додає наступну частину заявок до вже завантажених рядків
-  private readonly handleNextRequestsPageLoadSuccess = (
-    page: IServiceRequestPage,
-    backgroundRequestsVersion: number
+  private readonly handleBackgroundRequestsPageLoadSuccess = (
+    page: ISharePointBackgroundPage<IServiceRequest, IRequestPageCursor>
   ): void => {
-    if (backgroundRequestsVersion !== this.backgroundRequestsVersion) {
-      return;
-    }
-
     this.setState(previousState => ({
       data: previousState.data
         ? {
           ...previousState.data,
-          requests: [...previousState.data.requests, ...page.requests]
+          requests: [...previousState.data.requests, ...page.items]
         }
         : previousState.data,
-      nextRequestsPageCursor: page.cursor,
-      isLoadingMoreRequests: false
-    }), this.scheduleBackgroundRequestsLoading);
+      error: undefined
+    }));
   };
 
   // показує помилку фонової частини заявок та зупиняє завантаження
-  private readonly handleNextRequestsPageLoadError = (
-    error: unknown,
-    backgroundRequestsVersion: number
-  ): void => {
-    if (backgroundRequestsVersion !== this.backgroundRequestsVersion) {
-      return;
-    }
-
+  private readonly handleBackgroundRequestsPageLoadError = (error: unknown): void => {
     this.setState({
-      isLoadingMoreRequests: false,
+      isBackgroundRequestsLoading: false,
+      isCountingRequests: false,
       error: error instanceof Error ? error.message : 'Невідома помилка завантаження.'
     });
   };
 
-  // запускає підрахунок загальної кількості заявок вибраного діапазону
-  private startRequestsCount(): void {
-    const { createdFrom, createdTo, nextRequestsPageCursor } = this.state;
+  // завершує стан фонового завантаження після останньої сторінки
+  private readonly handleBackgroundRequestsLoadComplete = (): void => {
+    this.setState({ isBackgroundRequestsLoading: false });
+  };
 
-    if (!nextRequestsPageCursor) {
+  // запускає підрахунок загальної кількості заявок вибраного діапазону
+  private startRequestsCount(backgroundLoadingVersion: number): void {
+    const { createdFrom, createdTo, isBackgroundRequestsLoading } = this.state;
+
+    if (!isBackgroundRequestsLoading) {
       this.setState(previousState => ({
         totalRequests: previousState.data?.requests.length ?? 0,
         isCountingRequests: false
@@ -234,14 +222,12 @@ export default class ServiceRequestsPage extends React.Component<
       return;
     }
 
-    const currentBackgroundRequestsVersion = this.backgroundRequestsVersion;
-
     this.service.countRequests({ from: createdFrom, to: createdTo })
       .then(totalRequests => this.handleRequestsCountSuccess(
         totalRequests,
-        currentBackgroundRequestsVersion
+        backgroundLoadingVersion
       ))
-      .catch(() => this.handleRequestsCountError(currentBackgroundRequestsVersion));
+      .catch(() => this.handleRequestsCountError(backgroundLoadingVersion));
   }
 
   // зберігає обчислену загальну кількість заявок
@@ -249,52 +235,24 @@ export default class ServiceRequestsPage extends React.Component<
     totalRequests: number,
     backgroundRequestsVersion: number
   ): void => {
-    if (backgroundRequestsVersion === this.backgroundRequestsVersion) {
+    if (backgroundRequestsVersion === this.backgroundRequestsLoader.getVersion()) {
       this.setState({ totalRequests, isCountingRequests: false });
     }
   };
 
   // завершує підрахунок якщо не вдалося визначити загальну кількість
   private readonly handleRequestsCountError = (backgroundRequestsVersion: number): void => {
-    if (backgroundRequestsVersion === this.backgroundRequestsVersion) {
+    if (backgroundRequestsVersion === this.backgroundRequestsLoader.getVersion()) {
       this.setState({ isCountingRequests: false });
     }
   };
 
-  // планує наступне фонове завантаження після затримки
-  private scheduleBackgroundRequestsLoading = (): void => {
-    if (!this.state.nextRequestsPageCursor) {
-      return;
-    }
-
-    this.cancelBackgroundRequestsTimeout();
-    this.backgroundRequestsTimeout = setTimeout(
-      this.loadNextRequestsPage,
-      backgroundRequestsDelay
-    );
-  };
-
-  // зупиняє таймер фонового завантаження
-  private cancelBackgroundRequestsTimeout(): void {
-    if (this.backgroundRequestsTimeout) {
-      clearTimeout(this.backgroundRequestsTimeout);
-      this.backgroundRequestsTimeout = undefined;
-    }
-  }
-
-  // скасовує поточне фонове завантаження та захищає від застарілих відповідей
-  private cancelBackgroundRequestsLoading(): void {
-    this.backgroundRequestsVersion += 1;
-    this.cancelBackgroundRequestsTimeout();
-  }
-
   // скасовує фонове завантаження та залишає в таблиці вже отримані заявки
   private readonly handleCancelRequestsLoading = (): void => {
-    this.cancelBackgroundRequestsLoading();
+    this.backgroundRequestsLoader.cancel();
 
     this.setState(previousState => ({
-      nextRequestsPageCursor: undefined,
-      isLoadingMoreRequests: false,
+      isBackgroundRequestsLoading: false,
       isCountingRequests: false,
       totalRequests: previousState.data?.requests.length
     }));
@@ -320,7 +278,7 @@ export default class ServiceRequestsPage extends React.Component<
       return;
     }
 
-    this.cancelBackgroundRequestsLoading();
+    this.backgroundRequestsLoader.cancel();
     this.setState({ success: undefined });
     this.loadRequests({ from: createdFrom, to: createdTo });
   };
@@ -328,15 +286,14 @@ export default class ServiceRequestsPage extends React.Component<
   // зберігає нижню межу дат та очищає завантажені заявки
   private readonly handleCreatedFromChange = (date: Date | null | undefined): void => {
     if (date) {
-      this.cancelBackgroundRequestsLoading();
+      this.backgroundRequestsLoader.cancel();
       this.setState(previousState => ({
         createdFrom: date,
         data: previousState.data
           ? { ...previousState.data, requests: [] }
           : previousState.data,
-        nextRequestsPageCursor: undefined,
         hasLoadedRequests: false,
-        isLoadingMoreRequests: false,
+        isBackgroundRequestsLoading: false,
         isCountingRequests: false,
         totalRequests: undefined,
         error: undefined
@@ -347,15 +304,14 @@ export default class ServiceRequestsPage extends React.Component<
   // зберігає верхню межу дат та очищає завантажені заявки
   private readonly handleCreatedToChange = (date: Date | null | undefined): void => {
     if (date) {
-      this.cancelBackgroundRequestsLoading();
+      this.backgroundRequestsLoader.cancel();
       this.setState(previousState => ({
         createdTo: date,
         data: previousState.data
           ? { ...previousState.data, requests: [] }
           : previousState.data,
-        nextRequestsPageCursor: undefined,
         hasLoadedRequests: false,
-        isLoadingMoreRequests: false,
+        isBackgroundRequestsLoading: false,
         isCountingRequests: false,
         totalRequests: undefined,
         error: undefined
@@ -511,7 +467,7 @@ export default class ServiceRequestsPage extends React.Component<
       );
 
       this.setState({
-        editingRequest: editSession.request,
+        editingRequest: editSession.item,
         editSession,
         isAcquiringEditLock: false,
         isEditLockValid: true
@@ -544,7 +500,7 @@ export default class ServiceRequestsPage extends React.Component<
 
     const isEditSessionMissing = !editingRequest || !editSession || !isEditLockValid;
     const missingEditSessionErrorMessage = 'Блокування заявки недійсне Відкрийте заявку для редагування ще раз';
-    const isEditLockRenewalInProgress = this.isEditLockRenewalInProgress;
+    const isEditLockRenewalInProgress = this.editLockRenewal?.getIsRenewalInProgress() ?? false;
     const editLockRenewalInProgressErrorMessage = 'Зачекайте завершення продовження блокування та збережіть заявку ще раз';
 
     if (isEditSessionMissing) {
@@ -584,42 +540,35 @@ export default class ServiceRequestsPage extends React.Component<
   // запускає періодичне продовження блокування відкритої форми
   private startEditLockRenewal = (): void => {
     this.stopEditLockRenewal();
-    this.editLockRenewalTimer = setInterval(this.renewEditLock, editLockRenewalInterval);
+    const { editSession } = this.state;
+
+    if (!editSession) {
+      return;
+    }
+
+    this.editLockRenewal = new SharePointEditLockRenewal({
+      intervalMilliseconds: editLockRenewalInterval,
+      renew: () => this.service.renewEditLock(editSession.item.Id, editSession.token),
+      onRenewed: () => this.setState({ isEditLockValid: true }),
+      onError: this.handleEditLockRenewalError
+    });
+    this.editLockRenewal.start();
   };
 
   // зупиняє періодичне продовження блокування
   private stopEditLockRenewal(): void {
-    if (this.editLockRenewalTimer) {
-      clearInterval(this.editLockRenewalTimer);
-      this.editLockRenewalTimer = undefined;
-    }
+    this.editLockRenewal?.stop();
+    this.editLockRenewal = undefined;
   }
 
-  // продовжує строк блокування поки користувач редагує заявку
-  private readonly renewEditLock = async (): Promise<void> => {
-    const { editSession } = this.state;
-    const cannotRenewEditLock = !editSession || this.isEditLockRenewalInProgress;
-
-    if (cannotRenewEditLock) {
-      return;
-    }
-
-    this.isEditLockRenewalInProgress = true;
-
-    try {
-      await this.service.renewEditLock(editSession.request.Id, editSession.token);
-      this.setState({ isEditLockValid: true });
-    } catch (error) {
-      this.stopEditLockRenewal();
-      this.setState({
-        isEditLockValid: false,
-        error: error instanceof Error
-          ? error.message
-          : 'Не вдалося продовжити блокування заявки'
-      });
-    } finally {
-      this.isEditLockRenewalInProgress = false;
-    }
+  // показує помилку якщо блокування не вдалося продовжити
+  private readonly handleEditLockRenewalError = (error: unknown): void => {
+    this.setState({
+      isEditLockValid: false,
+      error: error instanceof Error
+        ? error.message
+        : 'Не вдалося продовжити блокування заявки'
+    });
   };
 
   // звільняє блокування поточної форми без очікування відповіді сервера
@@ -627,7 +576,7 @@ export default class ServiceRequestsPage extends React.Component<
     const { editSession } = this.state;
 
     if (editSession) {
-      this.service.releaseEditLock(editSession.request.Id, editSession.token)
+      this.service.releaseEditLock(editSession.item.Id, editSession.token)
         .catch(() => undefined);
     }
   }
@@ -697,9 +646,8 @@ export default class ServiceRequestsPage extends React.Component<
     const {
       data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest,
       deletingRequest, isDeleting, deleteError, hasLoadedRequests, createdFrom, createdTo,
-      nextRequestsPageCursor, isLoadingMoreRequests, totalRequests, isCountingRequests
+      isBackgroundRequestsLoading, totalRequests, isCountingRequests
     } = this.state;
-    const isBackgroundRequestsLoading = Boolean(nextRequestsPageCursor);
 
     return (
       <section className={styles.page}>
@@ -719,7 +667,7 @@ export default class ServiceRequestsPage extends React.Component<
                   <ServiceRequestGenerator
                     categories={data.categories}
                     subcategories={data.subcategories}
-                    disabled={isLoading || isLoadingMoreRequests}
+                    disabled={isLoading || isBackgroundRequestsLoading}
                     onGenerate={this.handleGenerateRequest}
                   />
                 )}
@@ -732,7 +680,7 @@ export default class ServiceRequestsPage extends React.Component<
                     onSelectDate={this.handleCreatedFromChange}
                     formatDate={this.formatDate}
                     firstDayOfWeek={DayOfWeek.Monday}
-                    disabled={isLoading || isLoadingMoreRequests}
+                    disabled={isLoading || isBackgroundRequestsLoading}
                   />
 
                   <DatePicker
@@ -742,13 +690,13 @@ export default class ServiceRequestsPage extends React.Component<
                     onSelectDate={this.handleCreatedToChange}
                     formatDate={this.formatDate}
                     firstDayOfWeek={DayOfWeek.Monday}
-                    disabled={isLoading || isLoadingMoreRequests}
+                    disabled={isLoading || isBackgroundRequestsLoading}
                   />
 
                   <DefaultButton
                     text="Оновити"
                     onClick={this.handleRefresh}
-                    disabled={isLoading || isLoadingMoreRequests}
+                    disabled={isLoading || isBackgroundRequestsLoading}
                     className={styles.refreshButton}
                   />
                 </div>
@@ -756,7 +704,7 @@ export default class ServiceRequestsPage extends React.Component<
                 <PrimaryButton
                   text="Створити"
                   onClick={this.handleOpenCreate}
-                  disabled={!data || isLoading || isLoadingMoreRequests}
+                  disabled={!data || isLoading || isBackgroundRequestsLoading}
                   className={styles.wideActionButton}
                 />
               </>

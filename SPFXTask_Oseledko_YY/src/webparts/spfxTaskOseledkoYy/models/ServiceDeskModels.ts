@@ -103,9 +103,3 @@ export interface IServiceRequestPage {
   requests: IServiceRequest[];
   cursor?: IRequestPageCursor;
 }
-
-// активна сесія редагування однієї заявки
-export interface IRequestEditSession {
-  request: IServiceRequest;
-  token: string;
-}
