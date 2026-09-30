@@ -2,6 +2,9 @@ declare interface ISpfxTaskOseledkoYyWebPartStrings {
   PropertyPaneDescription: string;
   BasicGroupName: string;
   DescriptionFieldLabel: string;
+  GenerateRowsFieldLabel: string;
+  EnabledText: string;
+  DisabledText: string;
   AppLocalEnvironmentSharePoint: string;
   AppLocalEnvironmentTeams: string;
   AppLocalEnvironmentOffice: string;

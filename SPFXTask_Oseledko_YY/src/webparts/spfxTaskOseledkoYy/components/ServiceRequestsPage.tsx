@@ -41,9 +41,6 @@ interface IServiceRequestsPageState {
   success?: string;
 }
 
-// тимчасовий функціонал для швидкого створення тестових записів у базі
-const showRequestGenerator = false;
-
 // показує таблицю заявок із даними трьох списків sharepoint
 export default class ServiceRequestsPage extends React.Component<
   IServiceRequestsPageProps,
@@ -285,6 +282,7 @@ export default class ServiceRequestsPage extends React.Component<
 
   // відображає стан завантаження кількість заявок і таблицю
   public render(): React.ReactElement<IServiceRequestsPageProps> {
+    const { showRequestGenerator } = this.props;
     const {
       data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest,
       deletingRequest, isDeleting, deleteError

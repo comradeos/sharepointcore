@@ -17,6 +17,8 @@
     "title": { "default": "Сервісні заявки" },
     "description": { "default": "Робота із сервісними заявками" },
     "officeFabricIconFontName": "Page",
-    "properties": {}
+    "properties": {
+      "showRequestGenerator": false
+    }
   }]
 }

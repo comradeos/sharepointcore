@@ -6,4 +6,5 @@ export interface IServiceRequestsPageProps {
   webUrl: string;
   peoplePickerContext: IPeoplePickerContext;
   currentUserEmail: string;
+  showRequestGenerator: boolean;
 }

@@ -2,15 +2,24 @@ import * as React from 'react';
 import * as ReactDom from 'react-dom';
 import { Version } from '@microsoft/sp-core-library';
 import { IReadonlyTheme } from '@microsoft/sp-component-base';
-import { IPropertyPaneConfiguration } from '@microsoft/sp-property-pane';
+import {
+  IPropertyPaneConfiguration,
+  PropertyPaneToggle
+} from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
 import { IPeoplePickerContext } from '@pnp/spfx-controls-react/lib/PeoplePicker';
+import * as strings from 'SpfxTaskOseledkoYyWebPartStrings';
 
 import ServiceRequestsPage from './components/ServiceRequestsPage';
 import { IServiceRequestsPageProps } from './components/IServiceRequestsPageProps';
 
+// зберігає параметри які користувач змінює в панелі вебчастини
+export interface ISpfxTaskOseledkoYyWebPartProps {
+  showRequestGenerator: boolean;
+}
+
 // підключає екран заявок до сторінки sharepoint
-export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<Record<string, never>> {
+export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<ISpfxTaskOseledkoYyWebPartProps> {
   // передає екрану клієнт sharepoint та адресу поточного сайту
   public render(): void {
     // узгоджує типи різних версій пакетів sharepoint
@@ -25,7 +34,8 @@ export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<Rec
         spHttpClient: this.context.spHttpClient,
         webUrl: this.context.pageContext.web.absoluteUrl,
         peoplePickerContext,
-        currentUserEmail: this.context.pageContext.user.email
+        currentUserEmail: this.context.pageContext.user.email,
+        showRequestGenerator: this.properties.showRequestGenerator ?? false
       }
     );
 
@@ -50,8 +60,28 @@ export default class SpfxTaskOseledkoYyWebPart extends BaseClientSideWebPart<Rec
     return Version.parse('1.0');
   }
 
-  // повертає порожню панель налаштувань бо екран не має параметрів
+  // повертає перемикач тимчасового генератора рядків
   protected getPropertyPaneConfiguration(): IPropertyPaneConfiguration {
-    return { pages: [] };
+    return {
+      pages: [
+        {
+          header: {
+            description: strings.PropertyPaneDescription
+          },
+          groups: [
+            {
+              groupName: strings.BasicGroupName,
+              groupFields: [
+                PropertyPaneToggle('showRequestGenerator', {
+                  label: strings.GenerateRowsFieldLabel,
+                  onText: strings.EnabledText,
+                  offText: strings.DisabledText
+                })
+              ]
+            }
+          ]
+        }
+      ]
+    };
   }
 }
