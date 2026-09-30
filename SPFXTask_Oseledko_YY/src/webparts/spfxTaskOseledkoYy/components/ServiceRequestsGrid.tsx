@@ -367,7 +367,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
       </div>
 
       <div className={styles.resultRow}>
-        <Text>Знайдено заявок: {visibleCount}</Text>
+        <Text>Показано заявок: {visibleCount}</Text>
       </div>
 
       <div className={styles.grid}>

@@ -14,6 +14,28 @@
 
 .headerActions {
   max-width: 100%;
+  width: 100%;
+  gap: 12px;
+}
+
+.dateFilterActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  width: 100%;
+  gap: 12px;
+}
+
+.wideActionButton {
+  width: 468px;
+}
+
+.createdDateFilter {
+  width: 170px;
+}
+
+.refreshButton {
+  margin-bottom: 5px;
 }
 
 .content {
@@ -34,13 +56,17 @@
     width: 100%;
   }
 
-  .headerActions > button {
+  .createdDateFilter {
+    flex: 1 1 160px;
+  }
+
+  .dateFilterActions > button {
     flex: 1 1 140px;
   }
 }
 
 @media (max-width: 380px) {
-  .headerActions > button {
+  .dateFilterActions > button {
     flex-basis: 100%;
   }
 }

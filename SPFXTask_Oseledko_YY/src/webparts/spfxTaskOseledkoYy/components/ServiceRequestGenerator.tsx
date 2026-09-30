@@ -161,7 +161,7 @@ export default function ServiceRequestGenerator(
   };
 
   return (
-    <Stack horizontal verticalAlign="start" tokens={{ childrenGap: 8 }}>
+    <Stack horizontal verticalAlign="start" tokens={{ childrenGap: 12 }}>
       <TextField
         type="number"
         min={1}
@@ -178,7 +178,7 @@ export default function ServiceRequestGenerator(
       />
 
       <DefaultButton
-        iconProps={{ iconName: 'AddTo' }}
+        text="Генерувати"
         ariaLabel={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
         title={isGenerating ? 'Генеруємо заявки' : 'Згенерувати заявки'}
         className={styles.generateButton}

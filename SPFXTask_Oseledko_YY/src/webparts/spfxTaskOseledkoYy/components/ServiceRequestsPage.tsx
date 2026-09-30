@@ -1,6 +1,8 @@
 import * as React from 'react';
 import {
+  DatePicker,
   DefaultButton,
+  DayOfWeek,
   MessageBar,
   MessageBarType,
   PrimaryButton,
@@ -11,9 +13,13 @@ import {
 import styles from './ServiceRequestsPage.module.scss';
 import { IServiceRequestsPageProps } from './IServiceRequestsPageProps';
 import {
+  IRequestCreatedDateRange,
+  IRequestPageCursor,
+  IServiceDeskDictionaries,
   IServiceDeskData,
   IServiceRequest,
-  IServiceRequestDraft
+  IServiceRequestDraft,
+  IServiceRequestPage
 } from '../models/ServiceDeskModels';
 import ServiceDeskService from '../services/ServiceDeskService';
 import {
@@ -27,10 +33,20 @@ import ServiceRequestView from './ServiceRequestView';
 import ServiceRequestDeleteDialog from './ServiceRequestDeleteDialog';
 import ServiceRequestGenerator from './ServiceRequestGenerator';
 
+const backgroundRequestsPageSize = 1000;
+const backgroundRequestsDelay = 3000;
+
 // стан екрана сервісних заявок
 interface IServiceRequestsPageState {
   data?: IServiceDeskData;
+  createdFrom: Date;
+  createdTo: Date;
+  nextRequestsPageCursor?: IRequestPageCursor;
+  hasLoadedRequests: boolean;
   isLoading: boolean;
+  isLoadingMoreRequests: boolean;
+  isCountingRequests: boolean;
+  totalRequests?: number;
   isCreateOpen: boolean;
   selectedRequest?: IServiceRequest;
   editingRequest?: IServiceRequest;
@@ -47,34 +63,230 @@ export default class ServiceRequestsPage extends React.Component<
   IServiceRequestsPageState
 > {
   private readonly service: ServiceDeskService;
+  private backgroundRequestsTimeout?: ReturnType<typeof setTimeout>;
+  private backgroundRequestsVersion = 0;
 
   // створює сервіс для сайту вебчастини та початковий стан екрана
   public constructor(props: IServiceRequestsPageProps) {
     super(props);
     this.service = new ServiceDeskService(props.spHttpClient, props.webUrl);
+    const currentDate = this.getCurrentDate();
+
     this.state = {
+      createdFrom: currentDate,
+      createdTo: currentDate,
+      hasLoadedRequests: false,
       isLoading: false,
+      isLoadingMoreRequests: false,
+      isCountingRequests: false,
       isCreateOpen: false,
       isDeleting: false
     };
   }
 
-  // запускає завантаження після появи вебчастини на сторінці
+  // завантажує довідники після появи вебчастини на сторінці
   public componentDidMount(): void {
-    this.loadData();
+    this.loadDictionaries();
   }
 
-  // запускає запити до списків і передає результат відповідним обробникам
-  private loadData(): void {
+  // зупиняє фонові запити перед видаленням вебчастини зі сторінки
+  public componentWillUnmount(): void {
+    this.cancelBackgroundRequestsLoading();
+  }
+
+  // завантажує довідники без читання великого списку заявок
+  private loadDictionaries(): void {
     this.setState({ isLoading: true, error: undefined });
-    this.service.loadData()
-      .then(this.handleLoadSuccess)
+    this.service.loadDictionaries()
+      .then(this.handleDictionariesLoadSuccess)
       .catch(this.handleLoadError);
   }
 
-  // зберігає завантажені дані та прибирає індикатор завантаження
-  private readonly handleLoadSuccess = (data: IServiceDeskData): void => {
-    this.setState({ data, isLoading: false });
+  // зберігає довідники та створює порожній стан списку заявок
+  private readonly handleDictionariesLoadSuccess = (
+    dictionaries: IServiceDeskDictionaries
+  ): void => {
+    this.setState({
+      data: {
+        ...dictionaries,
+        requests: []
+      },
+      isLoading: false
+    });
+  };
+
+  // завантажує першу сторінку заявок за вибраним діапазоном дат створення
+  private loadRequests(createdDateRange: IRequestCreatedDateRange): void {
+    this.setState({
+      isLoading: true,
+      isLoadingMoreRequests: false,
+      isCountingRequests: false,
+      totalRequests: undefined,
+      error: undefined
+    });
+    this.service.loadRequestsPage(createdDateRange)
+      .then(this.handleRequestsLoadSuccess)
+      .catch(this.handleLoadError);
+  }
+
+  // зберігає першу сторінку заявок та запускає фонове завантаження
+  private readonly handleRequestsLoadSuccess = (page: IServiceRequestPage): void => {
+    this.setState(previousState => ({
+      data: previousState.data
+        ? {
+          ...previousState.data,
+          requests: page.requests
+        }
+        : previousState.data,
+      nextRequestsPageCursor: page.cursor,
+      hasLoadedRequests: true,
+      isLoading: false,
+      isCountingRequests: Boolean(page.cursor)
+    }), () => {
+      this.startRequestsCount();
+      this.scheduleBackgroundRequestsLoading();
+    });
+  };
+
+  // завантажує наступну фонову частину заявок
+  private readonly loadNextRequestsPage = (): void => {
+    const { createdFrom, createdTo, isLoadingMoreRequests, nextRequestsPageCursor } = this.state;
+    const canLoadNextRequestsPage = Boolean(nextRequestsPageCursor) && !isLoadingMoreRequests;
+
+    if (!canLoadNextRequestsPage || !nextRequestsPageCursor) {
+      return;
+    }
+
+    this.setState({ isLoadingMoreRequests: true, error: undefined });
+    const currentBackgroundRequestsVersion = this.backgroundRequestsVersion;
+
+    this.service.loadRequestsPage(
+      { from: createdFrom, to: createdTo },
+      nextRequestsPageCursor,
+      backgroundRequestsPageSize
+    )
+      .then(page => this.handleNextRequestsPageLoadSuccess(
+        page,
+        currentBackgroundRequestsVersion
+      ))
+      .catch(error => this.handleNextRequestsPageLoadError(
+        error,
+        currentBackgroundRequestsVersion
+      ));
+  };
+
+  // додає наступну частину заявок до вже завантажених рядків
+  private readonly handleNextRequestsPageLoadSuccess = (
+    page: IServiceRequestPage,
+    backgroundRequestsVersion: number
+  ): void => {
+    if (backgroundRequestsVersion !== this.backgroundRequestsVersion) {
+      return;
+    }
+
+    this.setState(previousState => ({
+      data: previousState.data
+        ? {
+          ...previousState.data,
+          requests: [...previousState.data.requests, ...page.requests]
+        }
+        : previousState.data,
+      nextRequestsPageCursor: page.cursor,
+      isLoadingMoreRequests: false
+    }), this.scheduleBackgroundRequestsLoading);
+  };
+
+  // показує помилку фонової частини заявок та зупиняє завантаження
+  private readonly handleNextRequestsPageLoadError = (
+    error: unknown,
+    backgroundRequestsVersion: number
+  ): void => {
+    if (backgroundRequestsVersion !== this.backgroundRequestsVersion) {
+      return;
+    }
+
+    this.setState({
+      isLoadingMoreRequests: false,
+      error: error instanceof Error ? error.message : 'Невідома помилка завантаження.'
+    });
+  };
+
+  // запускає підрахунок загальної кількості заявок вибраного діапазону
+  private startRequestsCount(): void {
+    const { createdFrom, createdTo, nextRequestsPageCursor } = this.state;
+
+    if (!nextRequestsPageCursor) {
+      this.setState(previousState => ({
+        totalRequests: previousState.data?.requests.length ?? 0,
+        isCountingRequests: false
+      }));
+      return;
+    }
+
+    const currentBackgroundRequestsVersion = this.backgroundRequestsVersion;
+
+    this.service.countRequests({ from: createdFrom, to: createdTo })
+      .then(totalRequests => this.handleRequestsCountSuccess(
+        totalRequests,
+        currentBackgroundRequestsVersion
+      ))
+      .catch(() => this.handleRequestsCountError(currentBackgroundRequestsVersion));
+  }
+
+  // зберігає обчислену загальну кількість заявок
+  private readonly handleRequestsCountSuccess = (
+    totalRequests: number,
+    backgroundRequestsVersion: number
+  ): void => {
+    if (backgroundRequestsVersion === this.backgroundRequestsVersion) {
+      this.setState({ totalRequests, isCountingRequests: false });
+    }
+  };
+
+  // завершує підрахунок якщо не вдалося визначити загальну кількість
+  private readonly handleRequestsCountError = (backgroundRequestsVersion: number): void => {
+    if (backgroundRequestsVersion === this.backgroundRequestsVersion) {
+      this.setState({ isCountingRequests: false });
+    }
+  };
+
+  // планує наступне фонове завантаження після затримки
+  private scheduleBackgroundRequestsLoading = (): void => {
+    if (!this.state.nextRequestsPageCursor) {
+      return;
+    }
+
+    this.cancelBackgroundRequestsTimeout();
+    this.backgroundRequestsTimeout = setTimeout(
+      this.loadNextRequestsPage,
+      backgroundRequestsDelay
+    );
+  };
+
+  // зупиняє таймер фонового завантаження
+  private cancelBackgroundRequestsTimeout(): void {
+    if (this.backgroundRequestsTimeout) {
+      clearTimeout(this.backgroundRequestsTimeout);
+      this.backgroundRequestsTimeout = undefined;
+    }
+  }
+
+  // скасовує поточне фонове завантаження та захищає від застарілих відповідей
+  private cancelBackgroundRequestsLoading(): void {
+    this.backgroundRequestsVersion += 1;
+    this.cancelBackgroundRequestsTimeout();
+  }
+
+  // скасовує фонове завантаження та залишає в таблиці вже отримані заявки
+  private readonly handleCancelRequestsLoading = (): void => {
+    this.cancelBackgroundRequestsLoading();
+
+    this.setState(previousState => ({
+      nextRequestsPageCursor: undefined,
+      isLoadingMoreRequests: false,
+      isCountingRequests: false,
+      totalRequests: previousState.data?.requests.length
+    }));
   };
 
   // показує повідомлення якщо один із запитів завершився помилкою
@@ -85,11 +297,95 @@ export default class ServiceRequestsPage extends React.Component<
     });
   };
 
-  // повторює запити після натискання кнопки оновлення
+  // перевіряє межі дат та завантажує список заявок
   private readonly handleRefresh = (): void => {
+    const { createdFrom, createdTo } = this.state;
+    const isCreatedDateRangeInvalid = createdFrom > createdTo;
+
+    if (isCreatedDateRangeInvalid) {
+      this.setState({
+        error: 'Дата створення від не може бути пізніше за дату створення до'
+      });
+      return;
+    }
+
+    this.cancelBackgroundRequestsLoading();
     this.setState({ success: undefined });
-    this.loadData();
+    this.loadRequests({ from: createdFrom, to: createdTo });
   };
+
+  // зберігає нижню межу дат та очищає завантажені заявки
+  private readonly handleCreatedFromChange = (date: Date | null | undefined): void => {
+    if (date) {
+      this.cancelBackgroundRequestsLoading();
+      this.setState(previousState => ({
+        createdFrom: date,
+        data: previousState.data
+          ? { ...previousState.data, requests: [] }
+          : previousState.data,
+        nextRequestsPageCursor: undefined,
+        hasLoadedRequests: false,
+        isLoadingMoreRequests: false,
+        isCountingRequests: false,
+        totalRequests: undefined,
+        error: undefined
+      }));
+    }
+  };
+
+  // зберігає верхню межу дат та очищає завантажені заявки
+  private readonly handleCreatedToChange = (date: Date | null | undefined): void => {
+    if (date) {
+      this.cancelBackgroundRequestsLoading();
+      this.setState(previousState => ({
+        createdTo: date,
+        data: previousState.data
+          ? { ...previousState.data, requests: [] }
+          : previousState.data,
+        nextRequestsPageCursor: undefined,
+        hasLoadedRequests: false,
+        isLoadingMoreRequests: false,
+        isCountingRequests: false,
+        totalRequests: undefined,
+        error: undefined
+      }));
+    }
+  };
+
+  // повертає поточну дату без часу для початкового діапазону
+  private getCurrentDate(): Date {
+    const currentDate = new Date();
+
+    return new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate()
+    );
+  }
+
+  // форматує дату для відображення у полі fluent ui
+  private readonly formatDate = (date?: Date): string => {
+    return date ? date.toLocaleDateString('uk-UA') : '';
+  };
+
+  // форматує стан фонового завантаження заявок для відображення користувачу
+  private getRequestsLoadingText(
+    loadedRequestsCount: number,
+    totalRequests: number | undefined,
+    isCountingRequests: boolean
+  ): string {
+    if (totalRequests === undefined) {
+      return isCountingRequests
+        ? `Завантажено заявок: ${loadedRequestsCount} Визначаємо загальну кількість`
+        : `Завантажено заявок: ${loadedRequestsCount}`;
+    }
+
+    const loadingProgress = totalRequests === 0
+      ? 100
+      : Math.min(100, Math.round((loadedRequestsCount / totalRequests) * 100));
+
+    return `Завантажено заявок: ${loadedRequestsCount} із ${totalRequests} (${loadingProgress}%)`;
+  }
 
   // відкриває форму створення нової заявки
   private readonly handleOpenCreate = (): void => {
@@ -119,6 +415,7 @@ export default class ServiceRequestsPage extends React.Component<
         }
         : previousState.data,
       success: 'Заявку успішно створено',
+      hasLoadedRequests: true,
       error: undefined
     }));
   };
@@ -152,6 +449,7 @@ export default class ServiceRequestsPage extends React.Component<
           }
           : previousState.data,
         success: `Створено заявок: ${drafts.length}`,
+        hasLoadedRequests: true,
         error: undefined
       }));
     } catch (error) {
@@ -285,45 +583,75 @@ export default class ServiceRequestsPage extends React.Component<
     const { showRequestGenerator } = this.props;
     const {
       data, error, success, isLoading, isCreateOpen, selectedRequest, editingRequest,
-      deletingRequest, isDeleting, deleteError
+      deletingRequest, isDeleting, deleteError, hasLoadedRequests, createdFrom, createdTo,
+      nextRequestsPageCursor, isLoadingMoreRequests, totalRequests, isCountingRequests
     } = this.state;
+    const isBackgroundRequestsLoading = Boolean(nextRequestsPageCursor);
 
     return (
       <section className={styles.page}>
-        <Stack
-          className={styles.header}
-          horizontal
-          horizontalAlign="space-between"
-          verticalAlign="center"
-          wrap
-        >
+        <Stack className={styles.header}>
           <Text className={styles.pageTitle} variant="xLarge">Сервісні заявки</Text>
 
-          <Stack className={styles.headerActions} horizontal wrap tokens={{ childrenGap: 8 }}>
-            {showRequestGenerator && data && (
-              <ServiceRequestGenerator
-                categories={data.categories}
-                subcategories={data.subcategories}
-                disabled={isLoading}
-                onGenerate={this.handleGenerateRequest}
+          <Stack className={styles.headerActions}>
+            {isBackgroundRequestsLoading ? (
+              <DefaultButton
+                text="Скасувати завантаження"
+                onClick={this.handleCancelRequestsLoading}
+                className={styles.wideActionButton}
               />
+            ) : (
+              <>
+                {showRequestGenerator && data && (
+                  <ServiceRequestGenerator
+                    categories={data.categories}
+                    subcategories={data.subcategories}
+                    disabled={isLoading || isLoadingMoreRequests}
+                    onGenerate={this.handleGenerateRequest}
+                  />
+                )}
+
+                <div className={styles.dateFilterActions}>
+                  <DatePicker
+                    className={styles.createdDateFilter}
+                    label="Дата створення від"
+                    value={createdFrom}
+                    onSelectDate={this.handleCreatedFromChange}
+                    formatDate={this.formatDate}
+                    firstDayOfWeek={DayOfWeek.Monday}
+                    disabled={isLoading || isLoadingMoreRequests}
+                  />
+
+                  <DatePicker
+                    className={styles.createdDateFilter}
+                    label="Дата створення до"
+                    value={createdTo}
+                    onSelectDate={this.handleCreatedToChange}
+                    formatDate={this.formatDate}
+                    firstDayOfWeek={DayOfWeek.Monday}
+                    disabled={isLoading || isLoadingMoreRequests}
+                  />
+
+                  <DefaultButton
+                    text="Оновити"
+                    onClick={this.handleRefresh}
+                    disabled={isLoading || isLoadingMoreRequests}
+                    className={styles.refreshButton}
+                  />
+                </div>
+
+                <PrimaryButton
+                  text="Створити"
+                  onClick={this.handleOpenCreate}
+                  disabled={!data || isLoading || isLoadingMoreRequests}
+                  className={styles.wideActionButton}
+                />
+              </>
             )}
-
-            <DefaultButton 
-              text="Оновити" 
-              onClick={this.handleRefresh} 
-              disabled={isLoading} 
-            />
-
-            <PrimaryButton
-              text="Створити"
-              onClick={this.handleOpenCreate}
-              disabled={!data || isLoading}
-            />
           </Stack>
         </Stack>
 
-        {isLoading && <Spinner className={styles.loading} label="Завантажуємо списки..." />}
+        {isLoading && <Spinner className={styles.loading} label="Завантажуємо дані..." />}
 
         {error && (
           <MessageBar className={styles.statusMessage} messageBarType={MessageBarType.error}>
@@ -339,14 +667,26 @@ export default class ServiceRequestsPage extends React.Component<
 
         {data && (
           <div className={styles.content}>
-            <Text variant="medium">Усього заявок: {data.requests.length}</Text>
+            {hasLoadedRequests ? (
+              <>
+                <Text variant="medium">
+                  {this.getRequestsLoadingText(
+                    data.requests.length,
+                    totalRequests,
+                    isCountingRequests
+                  )}
+                </Text>
 
-            <ServiceRequestsGrid
-              requests={data.requests}
-              onView={this.handleOpenView}
-              onEdit={this.handleOpenEdit}
-              onDelete={this.handleOpenDelete}
-            />
+                <ServiceRequestsGrid
+                  requests={data.requests}
+                  onView={this.handleOpenView}
+                  onEdit={this.handleOpenEdit}
+                  onDelete={this.handleOpenDelete}
+                />
+              </>
+            ) : (
+              <Text variant="medium">Заявки ще не завантажено Натисніть Оновити</Text>
+            )}
 
             {isCreateOpen && (
               <ServiceRequestForm

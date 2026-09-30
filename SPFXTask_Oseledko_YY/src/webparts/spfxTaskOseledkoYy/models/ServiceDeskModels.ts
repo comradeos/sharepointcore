@@ -31,6 +31,7 @@ export interface IRequestSubcategory {
 // заявка з розгорнутими значеннями lookup і person
 export interface IServiceRequest {
   Id: number;
+  Created: string;
   Title: string;
   Description: string;
   CategoryId: number;
@@ -74,4 +75,27 @@ export interface IServiceDeskData {
   requests: IServiceRequest[];
 }
 
-// діапазон локальних дат створення заявок
+// довідники які потрібні для форми сервісної заявки
+export interface IServiceDeskDictionaries {
+  categories: IRequestCategory[];
+  subcategories: IRequestSubcategory[];
+}
+
+// межі дат створення для серверного фільтра заявок
+export interface IRequestCreatedDateRange {
+  from?: Date;
+  to?: Date;
+}
+
+// стан продовження посторінкового завантаження заявок
+export interface IRequestPageCursor {
+  nextPageUrl?: string;
+  blockLowerId?: number;
+  nextItemUpperId?: number;
+}
+
+// сторінка заявок та стан для завантаження наступної частини
+export interface IServiceRequestPage {
+  requests: IServiceRequest[];
+  cursor?: IRequestPageCursor;
+}

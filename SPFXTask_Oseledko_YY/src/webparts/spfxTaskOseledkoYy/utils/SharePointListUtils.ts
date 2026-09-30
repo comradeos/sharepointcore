@@ -24,6 +24,13 @@ export interface ISharePointListOptions {
 export interface ISharePointListQueryOptions {
   filter?: string;
   orderBy?: string;
+  pageSize?: number;
+}
+
+// сторінка елементів списку та посилання на наступну сторінку
+export interface ISharePointListPage<TItem> {
+  items: TItem[];
+  nextPageUrl?: string;
 }
 
 // сторінка результатів sharepoint rest api без службових метаданих
@@ -36,6 +43,15 @@ interface IODataPage<TItem> {
 interface ICreatedListItem {
   Id?: number;
   ID?: number;
+}
+
+// помилка яку повертає sharepoint rest api
+interface ISharePointErrorResponse {
+  error?: {
+    message?: {
+      value?: string;
+    } | string;
+  };
 }
 
 // виконує типові операції з одним списком sharepoint
@@ -65,29 +81,42 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
 
   // читає всі сторінки налаштованого списку
   public async getAll(queryOptions: ISharePointListQueryOptions = {}): Promise<TItem[]> {
-    let nextUrl: string | undefined = this.buildCollectionUrl(queryOptions);
+    let nextPageUrl: string | undefined;
     const items: TItem[] = [];
 
-    while (nextUrl) {
-      const response: SPHttpClientResponse = await this.client.get(
-        nextUrl,
-        spHttpClientConfiguration,
-        { headers: readHeaders }
-      );
-
-      this.ensureSuccessfulResponse(response, 'завантажити список');
-
-      const page = await response.json() as IODataPage<TItem>;
-
-      if (!Array.isArray(page.value)) {
-        throw new Error(`Список ${this.options.listTitle} повернув неочікуваний формат даних`);
-      }
-
-      items.push(...page.value);
-      nextUrl = page['@odata.nextLink'];
-    }
+    do {
+      const page = await this.getPage(queryOptions, nextPageUrl);
+      items.push(...page.items);
+      nextPageUrl = page.nextPageUrl;
+    } while (nextPageUrl);
 
     return items;
+  }
+
+  // читає одну сторінку списку та повертає посилання на наступну сторінку
+  public async getPage(
+    queryOptions: ISharePointListQueryOptions = {},
+    nextPageUrl?: string
+  ): Promise<ISharePointListPage<TItem>> {
+    const collectionUrl = nextPageUrl ?? this.buildCollectionUrl(queryOptions);
+    const response: SPHttpClientResponse = await this.client.get(
+      collectionUrl,
+      spHttpClientConfiguration,
+      { headers: readHeaders }
+    );
+
+    await this.ensureSuccessfulResponse(response, 'завантажити список');
+
+    const page = await response.json() as IODataPage<TItem>;
+
+    if (!Array.isArray(page.value)) {
+      throw new Error(`Список ${this.options.listTitle} повернув неочікуваний формат даних`);
+    }
+
+    return {
+      items: page.value,
+      nextPageUrl: page['@odata.nextLink']
+    };
   }
 
   // читає один елемент списку за його числовим ідентифікатором
@@ -100,7 +129,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       { headers: readHeaders }
     );
 
-    this.ensureSuccessfulResponse(response, 'завантажити елемент списку');
+    await this.ensureSuccessfulResponse(response, 'завантажити елемент списку');
 
     const item = await response.json() as TItem;
 
@@ -122,7 +151,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       }
     );
 
-    this.ensureSuccessfulResponse(response, 'створити елемент списку');
+    await this.ensureSuccessfulResponse(response, 'створити елемент списку');
 
     const createdItem = await response.json() as ICreatedListItem;
     const createdItemId = createdItem.Id ?? createdItem.ID;
@@ -154,7 +183,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       }
     );
 
-    this.ensureSuccessfulResponse(response, 'оновити елемент списку');
+    await this.ensureSuccessfulResponse(response, 'оновити елемент списку');
 
     return this.getById(itemId);
   }
@@ -175,7 +204,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       }
     );
 
-    this.ensureSuccessfulResponse(response, 'видалити елемент списку');
+    await this.ensureSuccessfulResponse(response, 'видалити елемент списку');
   }
 
   // перевіряє налаштування списку до виконання першого запиту
@@ -231,15 +260,39 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
   }
 
   // перевіряє успішність відповіді sharepoint
-  private ensureSuccessfulResponse(
+  private async ensureSuccessfulResponse(
     response: SPHttpClientResponse,
     action: string
-  ): void {
+  ): Promise<void> {
     const hasRequestFailed = !response.ok;
-    const requestErrorMessage = `Не вдалося ${action} ${this.options.listTitle} (HTTP ${response.status})`;
 
     if (hasRequestFailed) {
+      const errorDetails = await this.getResponseErrorDetails(response);
+      const requestErrorMessage = errorDetails
+        ? `Не вдалося ${action} ${this.options.listTitle} (HTTP ${response.status} ${errorDetails})`
+        : `Не вдалося ${action} ${this.options.listTitle} (HTTP ${response.status})`;
+
       throw new Error(requestErrorMessage);
+    }
+  }
+
+  // повертає текст помилки зі відповіді sharepoint
+  private async getResponseErrorDetails(response: SPHttpClientResponse): Promise<string | undefined> {
+    const responseText = await response.text();
+
+    if (!responseText) {
+      return undefined;
+    }
+
+    try {
+      const responseError = JSON.parse(responseText) as ISharePointErrorResponse;
+      const errorMessage = responseError.error?.message;
+
+      return typeof errorMessage === 'string'
+        ? errorMessage
+        : errorMessage?.value;
+    } catch {
+      return undefined;
     }
   }
 
@@ -271,7 +324,8 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       query.push(`$orderby=${encodeURIComponent(orderBy)}`);
     }
 
-    query.push(`$top=${this.pageSize}`);
+    const pageSize = queryOptions.pageSize ?? this.pageSize;
+    query.push(`$top=${pageSize}`);
 
     return `${this.listUrl}/items?${query.join('&')}`;
   }
