@@ -1,4 +1,5 @@
 import * as React from 'react';
+import packageInfo from '../../../../package.json';
 import {
   DatePicker,
   DefaultButton,
@@ -668,7 +669,9 @@ export default class ServiceRequestsPage extends React.Component<
     return (
       <section className={styles.page}>
         <Stack className={styles.header}>
-          <Text className={styles.pageTitle} variant="xLarge">Сервісні заявки</Text>
+          <Text className={styles.pageTitle} variant="xLarge">
+            Сервісні заявки · v{packageInfo.version}
+          </Text>
 
           <Stack className={styles.headerActions}>
             {isBackgroundRequestsLoading ? (
