@@ -220,7 +220,7 @@ const columnDefs: ColDef<IRequestGridRow>[] = [
   {
     field: 'id',
     headerName: 'ID',
-    width: 50,
+    width: 90,
     pinned: 'left',
     lockPinned: true,
     suppressMovable: true

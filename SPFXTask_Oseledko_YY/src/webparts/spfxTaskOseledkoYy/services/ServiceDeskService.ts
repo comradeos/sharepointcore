@@ -73,7 +73,7 @@ const serviceRequestExpandFields = [
   'Assignee',
   'EditLockOwner'
 ];
-const initialRequestsPageSize = 50;
+const initialRequestsPageSize = 1000;
 const requestIdBlockSize = 4000;
 
 // читає заявки та довідники із сайту де розміщена вебчастина
@@ -176,7 +176,7 @@ export default class ServiceDeskService {
     }
 
     try {
-      return await this.loadFirstServerFilteredRequestsPage(createdDateRange);
+      return await this.loadFirstServerFilteredRequestsPage(createdDateRange, pageSize);
     } catch (error) {
       const isListViewThresholdExceeded = this.isListViewThresholdError(error);
 
@@ -196,12 +196,14 @@ export default class ServiceDeskService {
 
   // завантажує першу сторінку з серверним фільтром за датою створення
   private async loadFirstServerFilteredRequestsPage(
-    createdDateRange: IRequestCreatedDateRange
+    createdDateRange: IRequestCreatedDateRange,
+    pageSize: number
   ): Promise<IServiceRequestPage> {
     const filter = this.buildCreatedDateFilter(createdDateRange);
     const page = await this.requestsList.getPage({
       filter,
-      orderBy: 'Id desc'
+      orderBy: 'Id desc',
+      pageSize
     });
 
     return {
@@ -268,25 +270,18 @@ export default class ServiceDeskService {
     cursor: IRequestPageCursor,
     pageSize: number
   ): Promise<IServiceRequestPage> {
-    const requests: IServiceRequest[] = [];
-    let currentCursor: IRequestPageCursor | undefined = cursor;
+    const filter = this.buildRequestBlockFilter(cursor);
+    const page = await this.requestsList.getPage({
+      filter,
+      orderBy: 'Id desc',
+      pageSize
+    });
+    const matchingRequests = page.items.filter(request =>
+      this.isRequestCreatedInRange(request, createdDateRange)
+    );
+    const nextCursor = this.createNextRequestPageCursor(cursor, page.items);
 
-    while (currentCursor && requests.length < pageSize) {
-      const remainingRequestsCount = pageSize - requests.length;
-      const filter = this.buildRequestBlockFilter(currentCursor);
-      const page = await this.requestsList.getPage({
-        filter,
-        orderBy: 'Id desc',
-        pageSize: remainingRequestsCount
-      });
-      const matchingRequests = page.items.filter(request =>
-        this.isRequestCreatedInRange(request, createdDateRange)
-      );
-      requests.push(...matchingRequests);
-      currentCursor = this.createNextRequestPageCursor(currentCursor, page.items);
-    }
-
-    return { requests, cursor: currentCursor };
+    return { requests: matchingRequests, cursor: nextCursor };
   }
 
   // створює стан для наступної частини безпечного діапазону id

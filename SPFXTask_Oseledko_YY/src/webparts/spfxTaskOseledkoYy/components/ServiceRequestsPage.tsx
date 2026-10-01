@@ -38,7 +38,7 @@ import ServiceRequestDeleteDialog from './ServiceRequestDeleteDialog';
 import ServiceRequestGenerator from './ServiceRequestGenerator';
 
 const backgroundRequestsPageSize = 1000;
-const backgroundRequestsDelay = 3000;
+const backgroundRequestsDelay = 150;
 const editLockRenewalInterval = 60 * 1000;
 
 // стан екрана сервісних заявок
@@ -193,7 +193,7 @@ export default class ServiceRequestsPage extends React.Component<
         }
         : previousState.data,
       error: undefined
-    }));
+    }), this.completeBackgroundLoadingIfAllRequestsLoaded);
   };
 
   // показує помилку фонової частини заявок та зупиняє завантаження
@@ -236,7 +236,23 @@ export default class ServiceRequestsPage extends React.Component<
     backgroundRequestsVersion: number
   ): void => {
     if (backgroundRequestsVersion === this.backgroundRequestsLoader.getVersion()) {
-      this.setState({ totalRequests, isCountingRequests: false });
+      this.setState(
+        { totalRequests, isCountingRequests: false },
+        this.completeBackgroundLoadingIfAllRequestsLoaded
+      );
+    }
+  };
+
+  // зупиняє фонове читання коли кількість завантажених заявок збігається з загальною
+  private readonly completeBackgroundLoadingIfAllRequestsLoaded = (): void => {
+    const { data, totalRequests, isBackgroundRequestsLoading } = this.state;
+    const loadedRequestsCount = data?.requests.length ?? 0;
+    const areAllRequestsLoaded = totalRequests !== undefined
+      && loadedRequestsCount >= totalRequests;
+
+    if (isBackgroundRequestsLoading && areAllRequestsLoaded) {
+      this.backgroundRequestsLoader.cancel();
+      this.setState({ isBackgroundRequestsLoading: false });
     }
   };
 
@@ -343,7 +359,7 @@ export default class ServiceRequestsPage extends React.Component<
   ): string {
     if (totalRequests === undefined) {
       return isCountingRequests
-        ? `Завантажено заявок: ${loadedRequestsCount} Визначаємо загальну кількість`
+        ? `Завантажено заявок: ${loadedRequestsCount} ... визначаємо загальну кількість`
         : `Завантажено заявок: ${loadedRequestsCount}`;
     }
 
