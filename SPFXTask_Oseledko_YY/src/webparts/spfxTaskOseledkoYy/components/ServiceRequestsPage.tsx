@@ -718,14 +718,14 @@ export default class ServiceRequestsPage extends React.Component<
                     disabled={isLoading || isBackgroundRequestsLoading}
                     className={styles.refreshButton}
                   />
-                </div>
 
-                <PrimaryButton
-                  text="Створити"
-                  onClick={this.handleOpenCreate}
-                  disabled={!data || isLoading || isBackgroundRequestsLoading}
-                  className={styles.wideActionButton}
-                />
+                  <PrimaryButton
+                    text="Створити"
+                    onClick={this.handleOpenCreate}
+                    disabled={!data || isLoading || isBackgroundRequestsLoading}
+                    className={styles.refreshButton}
+                  />
+                </div>
               </>
             )}
           </Stack>

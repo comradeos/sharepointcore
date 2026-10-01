@@ -20,7 +20,7 @@
 
 .dateFilterActions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   align-items: flex-end;
   width: 100%;
   gap: 12px;
@@ -36,7 +36,7 @@
 
 .refreshButton {
   margin-bottom: 5px;
-  min-width: 130px;
+  width: 130px;
 }
 
 .content {
