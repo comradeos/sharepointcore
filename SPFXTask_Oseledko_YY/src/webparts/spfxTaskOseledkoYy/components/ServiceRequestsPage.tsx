@@ -38,7 +38,7 @@ import ServiceRequestView from './ServiceRequestView';
 import ServiceRequestDeleteDialog from './ServiceRequestDeleteDialog';
 import ServiceRequestGenerator from './ServiceRequestGenerator';
 
-const backgroundRequestsPageSize = 1000;
+const backgroundRequestsPageSize = 4000;
 const backgroundRequestsDelay = 150;
 const editLockRenewalInterval = 60 * 1000;
 

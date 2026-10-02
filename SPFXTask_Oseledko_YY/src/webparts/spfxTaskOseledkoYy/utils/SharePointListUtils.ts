@@ -4,12 +4,12 @@ const odataJsonContentType = 'application/json;odata=nometadata';
 const defaultPageSize = 5000;
 const matchAnyVersion = '*';
 const spHttpClientConfiguration = SPHttpClient.configurations.v1;
-const readHeaders = {
-  Accept: odataJsonContentType
+const readHeaders = { 
+  Accept: odataJsonContentType 
 };
-const jsonHeaders = {
-  Accept: odataJsonContentType,
-  'Content-Type': odataJsonContentType
+const jsonHeaders = { 
+  Accept: odataJsonContentType, 
+  'Content-Type': odataJsonContentType 
 };
 
 // параметри підключення до одного списку sharepoint
@@ -221,8 +221,14 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
   }
 
   // видаляє елемент списку за його числовим ідентифікатором
-  public async delete(itemId: number): Promise<void> {
+  public async delete(itemId: number, eTag: string = matchAnyVersion): Promise<void> {
     this.validateItemId(itemId);
+    const isETagEmpty = !eTag.trim();
+    const emptyETagErrorMessage = 'Версія елемента не може бути порожньою';
+
+    if (isETagEmpty) {
+      throw new Error(emptyETagErrorMessage);
+    }
 
     const response = await this.client.post(
       this.getItemUrl(itemId, false),
@@ -230,7 +236,7 @@ export default class SharePointListUtils<TItem, TPayload extends object = Record
       {
         headers: {
           ...readHeaders,
-          'IF-MATCH': matchAnyVersion,
+          'IF-MATCH': eTag,
           'X-HTTP-Method': 'DELETE'
         }
       }
@@ -654,6 +660,31 @@ export class SharePointListEditLockUtils<TItem, TPayload extends object> {
     } catch (error) {
       if (isSharePointListVersionConflictError(error)) {
         throw new Error(`${this.capitalizeItemName()} було змінено під час збереження Відкрийте його для редагування ще раз`);
+      }
+
+      throw error;
+    }
+  }
+
+  // видаляє елемент лише якщо його не редагує жодна вкладка
+  public async deleteUnlocked(itemId: number): Promise<void> {
+    const itemWithETag = await this.list.getByIdWithETag(itemId);
+
+    if (this.hasActiveLock(itemWithETag.item)) {
+      throw new Error(this.getActiveLockErrorMessage(itemWithETag.item));
+    }
+
+    try {
+      await this.list.delete(itemId, itemWithETag.eTag);
+    } catch (error) {
+      if (isSharePointListVersionConflictError(error)) {
+        const latestItem = await this.list.getById(itemId);
+
+        if (this.hasActiveLock(latestItem)) {
+          throw new Error(this.getActiveLockErrorMessage(latestItem));
+        }
+
+        throw new Error(`${this.capitalizeItemName()} було змінено перед видаленням Спробуйте виконати дію ще раз`);
       }
 
       throw error;

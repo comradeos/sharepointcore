@@ -73,7 +73,7 @@ const serviceRequestExpandFields = [
   'Assignee',
   'EditLockOwner'
 ];
-const initialRequestsPageSize = 1000;
+const initialRequestsPageSize = 4000;
 const requestIdBlockSize = 4000;
 
 // читає заявки та довідники із сайту де розміщена вебчастина
@@ -450,7 +450,7 @@ export default class ServiceDeskService {
 
   // видаляє заявку зі списку servicerequests
   public async deleteRequest(itemId: number): Promise<void> {
-    await this.requestsList.delete(itemId);
+    await this.editLock.deleteUnlocked(itemId);
   }
 
   // готує поля заявки та визначає ідентифікатори користувачів

@@ -1,23 +1,8 @@
 import * as React from 'react';
-import {
-  AllCommunityModule,
-  ColDef,
-  GetRowIdParams,
-  GridApi,
-  GridReadyEvent,
-  ModelUpdatedEvent,
-  themeQuartz,
-  ValueFormatterParams
-} from 'ag-grid-community';
+import { AllCommunityModule, ColDef, GetRowIdParams, GridApi, GridReadyEvent, themeQuartz, ValueFormatterParams } from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
 import { AgGridProvider, AgGridReact, CustomCellRendererProps } from 'ag-grid-react';
-import {
-  DefaultButton,
-  IconButton,
-  SearchBox,
-  Text,
-  TooltipHost
-} from '@fluentui/react';
+import { DefaultButton, IconButton, SearchBox, Text, TooltipHost } from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 import ServiceRequestChoiceFilter from './ServiceRequestChoiceFilter';
 import styles from './ServiceRequestsGrid.module.scss';
@@ -130,6 +115,23 @@ function getRequestRowId(params: GetRowIdParams<IRequestGridRow>): string {
   return String(params.data.id);
 }
 
+// повертає ім'я власника чинного блокування заявки
+function getActiveEditLockOwner(request: IServiceRequest): string | undefined {
+  const expiresAt = request.EditLockExpiresAt
+    ? new Date(request.EditLockExpiresAt)
+    : undefined;
+  const isExpiryDateValid = expiresAt !== undefined && !Number.isNaN(expiresAt.getTime());
+  const hasActiveLock = Boolean(request.EditLockOwnerId)
+    && Boolean(request.EditLockToken?.trim())
+    && isExpiryDateValid
+    && expiresAt !== undefined
+    && expiresAt > new Date();
+
+  return hasActiveLock
+    ? request.EditLockOwner?.Title ?? 'інший користувач'
+    : undefined;
+}
+
 // показує кнопки дій для одного рядка таблиці
 function RequestActionsRenderer(
   props: CustomCellRendererProps<IRequestGridRow, undefined, IRequestGridContext>
@@ -152,6 +154,12 @@ function RequestActionsRenderer(
   const handleDelete = (): void => {
     props.context.onDelete(props.data?.request as IServiceRequest);
   };
+
+  const editLockOwner = getActiveEditLockOwner(props.data.request);
+  const isDeleteDisabled = editLockOwner !== undefined;
+  const deleteTooltip = isDeleteDisabled
+    ? `Заявку редагує ${editLockOwner}`
+    : 'Видалити';
 
   return (
     <div className={styles.actions}>
@@ -178,7 +186,7 @@ function RequestActionsRenderer(
         />
       </TooltipHost>
       <TooltipHost
-        content="Видалити"
+        content={deleteTooltip}
         hostClassName={styles.actionTooltip}
       >
         <IconButton
@@ -186,6 +194,7 @@ function RequestActionsRenderer(
           iconProps={{ iconName: 'Delete' }}
           ariaLabel="Видалити"
           onClick={handleDelete}
+          disabled={isDeleteDisabled}
         />
       </TooltipHost>
     </div>
@@ -316,7 +325,6 @@ const defaultColDef: ColDef<IRequestGridRow> = {
 // відображає заявки в ag grid із сортуванням та українською локалізацією
 export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): React.ReactElement {
   const [searchText, setSearchText] = React.useState('');
-  const [visibleCount, setVisibleCount] = React.useState(props.requests.length);
   const gridApi = React.useRef<GridApi<IRequestGridRow>>();
   const rowCache = React.useRef<Map<number, ICachedRequestGridRow>>(new Map());
   const rows = getGridRows(props.requests, rowCache.current);
@@ -331,15 +339,9 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
     setSearchText(value || '');
   };
 
-  // зберігає api таблиці після її створення
+  // зберігає api таблиці для очищення фільтрів
   const handleGridReady = (event: GridReadyEvent<IRequestGridRow>): void => {
     gridApi.current = event.api;
-    setVisibleCount(event.api.getDisplayedRowCount());
-  };
-
-  // оновлює кількість рядків після пошуку або фільтрації
-  const handleModelUpdated = (event: ModelUpdatedEvent<IRequestGridRow>): void => {
-    setVisibleCount(event.api.getDisplayedRowCount());
   };
 
   // очищає загальний пошук та фільтри колонок
@@ -366,10 +368,6 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
         </div>
       </div>
 
-      <div className={styles.resultRow}>
-        <Text>Показано заявок: {visibleCount}</Text>
-      </div>
-
       <div className={styles.grid}>
         <AgGridReact<IRequestGridRow>
           rowData={rows}
@@ -386,7 +384,6 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           quickFilterText={searchText}
           cacheQuickFilter={true}
           onGridReady={handleGridReady}
-          onModelUpdated={handleModelUpdated}
         />
       </div>
       
