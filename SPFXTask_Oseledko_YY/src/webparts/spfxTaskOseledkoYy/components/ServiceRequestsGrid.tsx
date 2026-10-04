@@ -1,5 +1,15 @@
 import * as React from 'react';
-import { AllCommunityModule, ColDef, GetRowIdParams, GridApi, GridReadyEvent, themeQuartz, ValueFormatterParams } from 'ag-grid-community';
+import {
+  AllCommunityModule,
+  ColDef,
+  ColumnMovedEvent,
+  ColumnResizedEvent,
+  GetRowIdParams,
+  GridApi,
+  GridReadyEvent,
+  themeQuartz,
+  ValueFormatterParams
+} from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
 import { AgGridProvider, AgGridReact, CustomCellRendererProps } from 'ag-grid-react';
 import { DefaultButton, IconButton, SearchBox, Text, TooltipHost } from '@fluentui/react';
@@ -61,6 +71,66 @@ const hoursFormatter = new Intl.NumberFormat('uk-UA', {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1
 });
+const columnStateStorageKey = 'spfx-task-oseledko-yy.service-requests-grid.columns.v1';
+
+// збережений порядок і ширина колонок таблиці
+interface IStoredColumnState {
+  colId: string;
+  width?: number;
+}
+
+// читає збережений порядок і ширину колонок із localstorage
+function getStoredColumnState(): IStoredColumnState[] | undefined {
+  try {
+    const serializedState = window.localStorage.getItem(columnStateStorageKey);
+
+    if (!serializedState) {
+      return undefined;
+    }
+
+    const parsedState: unknown = JSON.parse(serializedState);
+    if (!Array.isArray(parsedState)) {
+      return undefined;
+    }
+
+    const columnState = parsedState.filter((value): value is IStoredColumnState => {
+      if (!value || typeof value !== 'object') {
+        return false;
+      }
+
+      const state = value as IStoredColumnState;
+      return typeof state.colId === 'string'
+        && (state.width === undefined || (Number.isFinite(state.width) && state.width > 0));
+    });
+
+    return columnState.length > 0 ? columnState : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// застосовує збережений порядок і ширину колонок
+function applyStoredColumnState(api: GridApi<IRequestGridRow>): void {
+  const columnState = getStoredColumnState();
+
+  if (columnState) {
+    api.applyColumnState({ state: columnState, applyOrder: true });
+  }
+}
+
+// зберігає поточний порядок і ширину колонок у localstorage
+function saveColumnState(api: GridApi<IRequestGridRow>): void {
+  const columnState: IStoredColumnState[] = api.getColumnState().map(({ colId, width }) => ({
+    colId,
+    width: width ?? undefined
+  }));
+
+  try {
+    window.localStorage.setItem(columnStateStorageKey, JSON.stringify(columnState));
+  } catch {
+    // браузер може заборонити доступ до localstorage
+  }
+}
 
 // перетворює заявку sharepoint на рядок із назвами полів із довідників
 function toGridRow(request: IServiceRequest): IRequestGridRow {
@@ -305,6 +375,7 @@ const columnDefs: ColDef<IRequestGridRow>[] = [
     filter: 'agNumberColumnFilter'
   },
   {
+    colId: 'actions',
     headerName: 'Дії',
     width: 136,
     minWidth: 136,
@@ -367,7 +438,20 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
   // зберігає api таблиці для очищення фільтрів
   const handleGridReady = (event: GridReadyEvent<IRequestGridRow>): void => {
     gridApi.current = event.api;
+    applyStoredColumnState(event.api);
     reportVisibleRequestIds();
+  };
+
+  // зберігає ширину колонки після завершення зміни розміру
+  const handleColumnResized = (event: ColumnResizedEvent<IRequestGridRow>): void => {
+    if (event.finished) {
+      saveColumnState(event.api);
+    }
+  };
+
+  // зберігає порядок колонок після перетягування
+  const handleColumnMoved = (event: ColumnMovedEvent<IRequestGridRow>): void => {
+    saveColumnState(event.api);
   };
 
   // очищає загальний пошук та фільтри колонок
@@ -410,6 +494,8 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           quickFilterText={searchText}
           cacheQuickFilter={true}
           onGridReady={handleGridReady}
+          onColumnResized={handleColumnResized}
+          onColumnMoved={handleColumnMoved}
           onPaginationChanged={reportVisibleRequestIds}
           onFilterChanged={reportVisibleRequestIds}
           onSortChanged={reportVisibleRequestIds}
