@@ -1,116 +1,23 @@
 import * as React from 'react';
 import { DefaultButton, Dropdown, IDropdownOption, IPersonaProps, IconButton, MessageBar, MessageBarType, Modal, PrimaryButton, Spinner, SpinnerSize, Stack, TextField, Toggle } from '@fluentui/react';
-import { IPeoplePickerContext, PeoplePicker, PrincipalType } from '@pnp/spfx-controls-react/lib/PeoplePicker';
+import { PeoplePicker, PrincipalType } from '@pnp/spfx-controls-react/lib/PeoplePicker';
 import { requestPriorities, requestStatuses } from '../models/ServiceDeskConstants';
-import { IRequestCategory, IRequestSubcategory, IServiceRequest, IServiceRequestDraft } from '../models/ServiceDeskModels';
+import { IServiceRequestDraft } from '../models/ServiceDeskModels';
+import {
+  filterUaEnergyUsers,
+  getMinimumDateTimeValue,
+  getPersonIdentity,
+  hasAllowedEmailDomain,
+  toDateTimeLocal
+} from './ServiceRequestForm.helpers';
+import {
+  IServiceRequestFormErrors,
+  IServiceRequestFormProps,
+  IServiceRequestFormState,
+  priorityOptions,
+  statusOptions
+} from './ServiceRequestForm.types';
 import styles from './ServiceRequestForm.module.scss';
-
-// вхідні дані форми створення заявки
-export interface IServiceRequestFormProps {
-  isOpen: boolean;
-  request?: IServiceRequest;
-  onDismiss: () => void;
-  categories: IRequestCategory[];
-  subcategories: IRequestSubcategory[];
-  peoplePickerContext: IPeoplePickerContext;
-  currentUserEmail: string;
-  isEditLockValid?: boolean;
-  onSubmit: (draft: IServiceRequestDraft) => Promise<void>;
-}
-
-// значення полів заявки до збереження
-interface IServiceRequestFormState {
-  title: string;
-  description: string;
-  categoryId?: number;
-  subcategoryId?: number;
-  status: string;
-  priority: string;
-  requester: IPersonaProps[];
-  assignee: IPersonaProps[];
-  plannedStart: string;
-  dueDate: string;
-  estimatedHours: string;
-  contactEmail: string;
-  requiresOnsiteVisit: boolean;
-  validationErrors: IServiceRequestFormErrors;
-  validationMessage?: string;
-  isSubmitting: boolean;
-  submitError?: string;
-}
-
-// значення користувача яке повертає peoplepicker
-interface IPeoplePickerPersona extends IPersonaProps {
-  loginName?: string;
-}
-
-// помилки перевірки полів заявки
-interface IServiceRequestFormErrors {
-  title?: string;
-  description?: string;
-  category?: string;
-  subcategory?: string;
-  status?: string;
-  requester?: string;
-  assignee?: string;
-  plannedStart?: string;
-  dueDate?: string;
-  estimatedHours?: string;
-  contactEmail?: string;
-}
-
-// доступні значення статусу зі списку sharepoint
-const statusOptions: IDropdownOption[] = [
-  { key: requestStatuses.new, text: requestStatuses.new },
-  { key: requestStatuses.inProgress, text: requestStatuses.inProgress },
-  { key: requestStatuses.resolved, text: requestStatuses.resolved },
-  { key: requestStatuses.closed, text: requestStatuses.closed }
-];
-
-// доступні значення пріоритету зі списку sharepoint
-const priorityOptions: IDropdownOption[] = [
-  { key: requestPriorities.low, text: requestPriorities.low },
-  { key: requestPriorities.medium, text: requestPriorities.medium },
-  { key: requestPriorities.high, text: requestPriorities.high }
-];
-
-const allowedEmailDomain = '@ua.energy';
-
-// кількість мілісекунд в одній хвилині
-const millisecondsPerMinute = 60 * 1000;
-
-// залишає у результатах пошуку користувачів з дозволеною поштою
-function filterUaEnergyUsers(results: IPersonaProps[]): IPersonaProps[] {
-  const filteredResults: IPersonaProps[] = [];
-
-  for (const result of results) {
-    const email = result.secondaryText?.trim().toLowerCase() ?? '';
-
-    if (email.endsWith(allowedEmailDomain)) {
-      filteredResults.push(result);
-    }
-  }
-
-  return filteredResults;
-}
-
-// перетворює дату sharepoint на локальне значення поля дати
-function toDateTimeLocal(value?: string): string {
-  if (!value) {
-    return '';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  const localDate = new Date(
-    date.getTime() - date.getTimezoneOffset() * millisecondsPerMinute
-  );
-
-  return localDate.toISOString().slice(0, 16);
-}
 
 // показує поля заявки у модальному вікні
 export default class ServiceRequestForm extends React.Component<
@@ -239,16 +146,6 @@ export default class ServiceRequestForm extends React.Component<
     this.setState({ requiresOnsiteVisit: checked || false });
   };
 
-  // повертає поточну локальну дату та час без секунд
-  private getMinimumDateTimeValue(): string {
-    const currentDate = new Date();
-    currentDate.setSeconds(0, 0);
-    const localDate = new Date(
-      currentDate.getTime() - currentDate.getTimezoneOffset() * millisecondsPerMinute
-    );
-    return localDate.toISOString().slice(0, 16);
-  }
-
   // перевіряє значення форми за правилами списку sharepoint
   private validateForm(): IServiceRequestFormErrors {
     const errors: IServiceRequestFormErrors = {};
@@ -307,7 +204,7 @@ export default class ServiceRequestForm extends React.Component<
 
     if (requester.length === 0) {
       errors.requester = 'Оберіть заявника';
-    } else if (!this.hasAllowedEmailDomain(requester)) {
+    } else if (!hasAllowedEmailDomain(requester)) {
       errors.requester = 'Пошта заявника повинна закінчуватися на @ua.energy';
     }
 
@@ -317,7 +214,7 @@ export default class ServiceRequestForm extends React.Component<
     
     const hasAssigneeWithInvalidDomain =
       assignee.length > 0 && 
-      !this.hasAllowedEmailDomain(assignee);
+      !hasAllowedEmailDomain(assignee);
 
     if (isAssigneeMissingForCompletedStatus) {
       errors.assignee = 'Оберіть виконавця для завершеної заявки';
@@ -327,7 +224,7 @@ export default class ServiceRequestForm extends React.Component<
 
     const plannedStartTime = plannedStart ? new Date(plannedStart).getTime() : undefined;
     const dueDateTime = dueDate ? new Date(dueDate).getTime() : undefined;
-    const minimumDateTime = new Date(this.getMinimumDateTimeValue()).getTime();
+    const minimumDateTime = new Date(getMinimumDateTimeValue()).getTime();
     const isDueDateInvalid = dueDateTime === undefined || Number.isNaN(dueDateTime);
     const isDueDateInPast =
       shouldValidateDatesAgainstCurrentTime &&
@@ -396,22 +293,6 @@ export default class ServiceRequestForm extends React.Component<
     return errors;
   }
 
-  // повертає адресу або логін вибраного користувача
-  private getPersonIdentity(people: IPersonaProps[], fallback = ''): string {
-    const person = people[0] as IPeoplePickerPersona | undefined;
-    if (!person) {
-      return fallback;
-    }
-
-    return person.loginName || person.secondaryText || String(person.id || fallback);
-  }
-
-  // перевіряє поштовий домен вибраного користувача
-  private hasAllowedEmailDomain(people: IPersonaProps[]): boolean {
-    const identity = this.getPersonIdentity(people).trim().toLowerCase();
-    return identity.endsWith(allowedEmailDomain);
-  }
-
   // готує незалежну від інтерфейсу модель для сервісу sharepoint
   private createDraft(): IServiceRequestDraft {
     const {
@@ -420,7 +301,7 @@ export default class ServiceRequestForm extends React.Component<
       contactEmail, requiresOnsiteVisit
     } = this.state;
 
-    const assigneeIdentity = this.getPersonIdentity(assignee);
+    const assigneeIdentity = getPersonIdentity(assignee);
 
     return {
       title: title.trim(),
@@ -429,7 +310,7 @@ export default class ServiceRequestForm extends React.Component<
       subcategoryId: subcategoryId as number,
       status,
       priority,
-      requesterIdentity: this.getPersonIdentity(requester, this.props.currentUserEmail),
+      requesterIdentity: getPersonIdentity(requester, this.props.currentUserEmail),
       assigneeIdentity: assigneeIdentity || undefined,
       plannedStart: plannedStart || undefined,
       dueDate,
@@ -484,7 +365,7 @@ export default class ServiceRequestForm extends React.Component<
     const categoryOptions: IDropdownOption[] = [];
     const subcategoryOptions: IDropdownOption[] = [];
     const availableStatusOptions = request ? statusOptions : statusOptions.slice(0, 2);
-    const minimumDateTime = this.getMinimumDateTimeValue();
+    const minimumDateTime = getMinimumDateTimeValue();
     const dateTimeMinimum = request ? undefined : minimumDateTime;
     const isEditLockInvalid = Boolean(request) && !isEditLockValid;
     const isSubmitDisabled = isSubmitting || isEditLockInvalid;

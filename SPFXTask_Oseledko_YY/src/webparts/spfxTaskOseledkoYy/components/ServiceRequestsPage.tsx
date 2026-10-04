@@ -1,14 +1,9 @@
 import * as React from 'react';
 import packageInfo from '../../../../package.json';
 import {
-  DatePicker,
-  DefaultButton,
-  DayOfWeek,
   MessageBar,
   MessageBarType,
-  PrimaryButton,
   Spinner,
-  Stack,
   Text
 } from '@fluentui/react';
 import styles from './ServiceRequestsPage.module.scss';
@@ -17,7 +12,6 @@ import {
   IRequestCreatedDateRange,
   IRequestPageCursor,
   IServiceDeskDictionaries,
-  IServiceDeskData,
   IServiceRequest,
   IServiceRequestDraft,
   IServiceRequestPage
@@ -26,7 +20,6 @@ import ServiceDeskService from '../services/ServiceDeskService';
 import {
   addListItems,
   ISharePointBackgroundPage,
-  ISharePointListEditSession,
   removeListItem,
   replaceListItem,
   SharePointBackgroundPageLoader,
@@ -36,35 +29,13 @@ import ServiceRequestsGrid from './ServiceRequestsGrid';
 import ServiceRequestForm from './ServiceRequestForm';
 import ServiceRequestView from './ServiceRequestView';
 import ServiceRequestDeleteDialog from './ServiceRequestDeleteDialog';
-import ServiceRequestGenerator from './ServiceRequestGenerator';
+import ServiceRequestsPageHeader from './ServiceRequestsPageHeader';
+import { IServiceRequestsPageState } from './ServiceRequestsPage.types';
 
 const backgroundRequestsPageSize = 4000;
 const backgroundRequestsDelay = 150;
 const editLockRenewalInterval = 60 * 1000;
 const visibleRequestsRefreshInterval = 30 * 1000;
-
-// стан екрана сервісних заявок
-interface IServiceRequestsPageState {
-  data?: IServiceDeskData;
-  createdFrom: Date;
-  createdTo: Date;
-  hasLoadedRequests: boolean;
-  isLoading: boolean;
-  isBackgroundRequestsLoading: boolean;
-  isCountingRequests: boolean;
-  totalRequests?: number;
-  isCreateOpen: boolean;
-  selectedRequest?: IServiceRequest;
-  editingRequest?: IServiceRequest;
-  editSession?: ISharePointListEditSession<IServiceRequest>;
-  isAcquiringEditLock: boolean;
-  isEditLockValid: boolean;
-  deletingRequest?: IServiceRequest;
-  isDeleting: boolean;
-  deleteError?: string;
-  error?: string;
-  success?: string;
-}
 
 // показує таблицю заявок із даними трьох списків sharepoint
 export default class ServiceRequestsPage extends React.Component<
@@ -808,68 +779,22 @@ export default class ServiceRequestsPage extends React.Component<
 
     return (
       <section className={styles.page}>
-        <Stack className={styles.header}>
-          <Text className={styles.pageTitle} variant="xLarge">
-            Сервісні заявки · v{packageInfo.version}
-          </Text>
-
-          <Stack className={styles.headerActions}>
-            {isBackgroundRequestsLoading ? (
-              <DefaultButton
-                text="Скасувати завантаження"
-                onClick={this.handleCancelRequestsLoading}
-                className={styles.wideActionButton}
-              />
-            ) : (
-              <>
-                {showRequestGenerator && data && (
-                  <ServiceRequestGenerator
-                    categories={data.categories}
-                    subcategories={data.subcategories}
-                    disabled={isLoading || isBackgroundRequestsLoading}
-                    onGenerate={this.handleGenerateRequest}
-                  />
-                )}
-
-                <div className={styles.dateFilterActions}>
-                  <DatePicker
-                    className={styles.createdDateFilter}
-                    label="Дата створення від"
-                    value={createdFrom}
-                    onSelectDate={this.handleCreatedFromChange}
-                    formatDate={this.formatDate}
-                    firstDayOfWeek={DayOfWeek.Monday}
-                    disabled={isLoading || isBackgroundRequestsLoading}
-                  />
-
-                  <DatePicker
-                    className={styles.createdDateFilter}
-                    label="Дата створення до"
-                    value={createdTo}
-                    onSelectDate={this.handleCreatedToChange}
-                    formatDate={this.formatDate}
-                    firstDayOfWeek={DayOfWeek.Monday}
-                    disabled={isLoading || isBackgroundRequestsLoading}
-                  />
-
-                  <DefaultButton
-                    text="Оновити"
-                    onClick={this.handleRefresh}
-                    disabled={isLoading || isBackgroundRequestsLoading}
-                    className={styles.refreshButton}
-                  />
-
-                  <PrimaryButton
-                    text="Створити"
-                    onClick={this.handleOpenCreate}
-                    disabled={!data || isLoading || isBackgroundRequestsLoading}
-                    className={styles.refreshButton}
-                  />
-                </div>
-              </>
-            )}
-          </Stack>
-        </Stack>
+        <ServiceRequestsPageHeader
+          version={packageInfo.version}
+          showRequestGenerator={showRequestGenerator}
+          data={data}
+          createdFrom={createdFrom}
+          createdTo={createdTo}
+          isLoading={isLoading}
+          isBackgroundRequestsLoading={isBackgroundRequestsLoading}
+          formatDate={this.formatDate}
+          onCreatedFromChange={this.handleCreatedFromChange}
+          onCreatedToChange={this.handleCreatedToChange}
+          onRefresh={this.handleRefresh}
+          onOpenCreate={this.handleOpenCreate}
+          onCancelLoading={this.handleCancelRequestsLoading}
+          onGenerate={this.handleGenerateRequest}
+        />
 
         {isLoading && <Spinner className={styles.loading} label="Завантажуємо дані..." />}
 

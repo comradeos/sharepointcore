@@ -7,51 +7,18 @@ import {
   IServiceDeskDictionaries,
   IServiceRequest,
   IServiceRequestDraft,
-  IServiceRequestPage,
-  SharePointNullable
+  IServiceRequestPage
 } from '../models/ServiceDeskModels';
 import SharePointListUtils, {
   ISharePointListEditSession,
   SharePointListEditLockUtils
 } from '../utils/SharePointListUtils';
-
-// користувач якого повертає метод ensureuser
-interface IEnsuredUser {
-  Id: number;
-}
-
-// поля потрібні для підрахунку заявок за датою створення
-interface IRequestDateMetadata {
-  Id: number;
-  Created: string;
-}
-
-// дані заявки у форматі внутрішніх полів списку sharepoint
-interface IServiceRequestPayload {
-  Title: string;
-  Description: string;
-  CategoryId: number;
-  SubcategoryId: number;
-  Status: string;
-  Priority: string;
-  RequesterId: number;
-  AssigneeId: SharePointNullable<number>;
-  PlannedStart: SharePointNullable<string>;
-  DueDate: string;
-  EstimatedHours: SharePointNullable<number>;
-  ContactEmail: SharePointNullable<string>;
-  RequiresOnsiteVisit: boolean;
-}
-
-// поля потрібні для тимчасового блокування редагування заявки
-interface IRequestEditLockPayload {
-  EditLockOwnerId?: SharePointNullable<number>;
-  EditLockExpiresAt?: SharePointNullable<string>;
-  EditLockToken?: SharePointNullable<string>;
-}
-
-// дані для часткового оновлення заявки та керування її блокуванням
-type IServiceRequestUpdatePayload = Partial<IServiceRequestPayload> & IRequestEditLockPayload;
+import {
+  IEnsuredUser,
+  IRequestDateMetadata,
+  IServiceRequestPayload,
+  IServiceRequestUpdatePayload
+} from './ServiceDeskService.types';
 
 const serviceRequestSelectFields = [
   'Id', 'Title', 'Description',
