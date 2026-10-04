@@ -29,6 +29,7 @@ interface IServiceRequestsGridProps {
   onView: (request: IServiceRequest) => void;
   onEdit: (request: IServiceRequest) => void;
   onDelete: (request: IServiceRequest) => void;
+  onVisibleRequestIdsChange: (requestIds: number[]) => void;
 }
 
 // дії таблиці доступні клітинці через контекст ag grid
@@ -339,9 +340,34 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
     setSearchText(value || '');
   };
 
+  // передає ідентифікатори рядків поточної сторінки для періодичного оновлення
+  const reportVisibleRequestIds = (): void => {
+    const api = gridApi.current;
+
+    if (!api) {
+      return;
+    }
+
+    const displayedRequests: IServiceRequest[] = [];
+    api.forEachNodeAfterFilterAndSort(node => {
+      if (node.data) {
+        displayedRequests.push(node.data.request);
+      }
+    });
+
+    const pageSize = api.paginationGetPageSize();
+    const pageStartIndex = api.paginationGetCurrentPage() * pageSize;
+    const visibleRequestIds = displayedRequests
+      .slice(pageStartIndex, pageStartIndex + pageSize)
+      .map(request => request.Id);
+
+    props.onVisibleRequestIdsChange(visibleRequestIds);
+  };
+
   // зберігає api таблиці для очищення фільтрів
   const handleGridReady = (event: GridReadyEvent<IRequestGridRow>): void => {
     gridApi.current = event.api;
+    reportVisibleRequestIds();
   };
 
   // очищає загальний пошук та фільтри колонок
@@ -384,6 +410,10 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           quickFilterText={searchText}
           cacheQuickFilter={true}
           onGridReady={handleGridReady}
+          onPaginationChanged={reportVisibleRequestIds}
+          onFilterChanged={reportVisibleRequestIds}
+          onSortChanged={reportVisibleRequestIds}
+          onModelUpdated={reportVisibleRequestIds}
         />
       </div>
       

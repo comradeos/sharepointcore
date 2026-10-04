@@ -194,6 +194,45 @@ export default class ServiceDeskService {
     }
   }
 
+  // читає актуальні дані заявок за ідентифікаторами для оновлення таблиці
+  public async loadRequestsByIds(requestIds: readonly number[]): Promise<IServiceRequest[]> {
+    const uniqueRequestIds = Array.from(new Set(requestIds)).filter(requestId =>
+      Number.isInteger(requestId) && requestId > 0
+    );
+
+    if (uniqueRequestIds.length === 0) {
+      return [];
+    }
+
+    const filter = uniqueRequestIds
+      .map(requestId => `Id eq ${requestId}`)
+      .join(' or ');
+    const page = await this.requestsList.getPage({
+      filter,
+      pageSize: uniqueRequestIds.length
+    });
+
+    return page.items;
+  }
+
+  // читає заявки створені після відомого ідентифікатора для оновлення таблиці
+  public async loadNewRequestsAfterId(
+    createdDateRange: IRequestCreatedDateRange,
+    latestKnownRequestId: number
+  ): Promise<{ requests: IServiceRequest[]; latestRequestId?: number }> {
+    const requests = await this.requestsList.getAll({
+      filter: `Id gt ${latestKnownRequestId}`,
+      orderBy: 'Id desc'
+    });
+
+    return {
+      requests: requests.filter(request =>
+        this.isRequestCreatedInRange(request, createdDateRange)
+      ),
+      latestRequestId: requests[0]?.Id
+    };
+  }
+
   // завантажує першу сторінку з серверним фільтром за датою створення
   private async loadFirstServerFilteredRequestsPage(
     createdDateRange: IRequestCreatedDateRange,
@@ -228,7 +267,7 @@ export default class ServiceDeskService {
   }
 
   // повертає найбільший ідентифікатор заявки для початку читання списку
-  private async getLatestRequestId(): Promise<number | undefined> {
+  public async getLatestRequestId(): Promise<number | undefined> {
     const latestRequestsPage = await this.requestMetadataList.getPage({
       orderBy: 'Id desc',
       pageSize: 1

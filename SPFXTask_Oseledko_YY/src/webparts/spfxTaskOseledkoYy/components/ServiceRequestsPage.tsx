@@ -41,6 +41,7 @@ import ServiceRequestGenerator from './ServiceRequestGenerator';
 const backgroundRequestsPageSize = 4000;
 const backgroundRequestsDelay = 150;
 const editLockRenewalInterval = 60 * 1000;
+const visibleRequestsRefreshInterval = 30 * 1000;
 
 // стан екрана сервісних заявок
 interface IServiceRequestsPageState {
@@ -76,6 +77,11 @@ export default class ServiceRequestsPage extends React.Component<
     IRequestPageCursor
   >;
   private editLockRenewal?: SharePointEditLockRenewal;
+  private visibleRequestIds: number[] = [];
+  private visibleRequestsRefreshTimer?: ReturnType<typeof setInterval>;
+  private isVisibleRequestsRefreshInProgress = false;
+  private isComponentMounted = false;
+  private latestKnownRequestId?: number;
 
   // створює сервіс для сайту вебчастини та початковий стан екрана
   public constructor(props: IServiceRequestsPageProps) {
@@ -115,12 +121,16 @@ export default class ServiceRequestsPage extends React.Component<
 
   // завантажує довідники після появи вебчастини на сторінці
   public componentDidMount(): void {
+    this.isComponentMounted = true;
     this.loadDictionaries();
+    this.startVisibleRequestsRefresh();
   }
 
   // зупиняє фонові запити перед видаленням вебчастини зі сторінки
   public componentWillUnmount(): void {
+    this.isComponentMounted = false;
     this.backgroundRequestsLoader.cancel();
+    this.stopVisibleRequestsRefresh();
     this.stopEditLockRenewal();
     this.releaseActiveEditLock();
   }
@@ -162,6 +172,9 @@ export default class ServiceRequestsPage extends React.Component<
 
   // зберігає першу сторінку заявок та запускає фонове завантаження
   private readonly handleRequestsLoadSuccess = (page: IServiceRequestPage): void => {
+    this.latestKnownRequestId = undefined;
+    this.initializeLatestKnownRequestId();
+
     this.setState(previousState => ({
       data: previousState.data
         ? {
@@ -210,6 +223,122 @@ export default class ServiceRequestsPage extends React.Component<
   private readonly handleBackgroundRequestsLoadComplete = (): void => {
     this.setState({ isBackgroundRequestsLoading: false });
   };
+
+  // зберігає рядки поточної сторінки таблиці для періодичного оновлення
+  private readonly handleVisibleRequestIdsChange = (requestIds: number[]): void => {
+    this.visibleRequestIds = Array.from(new Set(requestIds));
+  };
+
+  // запускає періодичне оновлення заявок які користувач бачить у таблиці
+  private startVisibleRequestsRefresh(): void {
+    this.stopVisibleRequestsRefresh();
+    this.visibleRequestsRefreshTimer = setInterval(() => {
+      this.refreshVisibleRequests().catch(() => undefined);
+    }, visibleRequestsRefreshInterval);
+  }
+
+  // зупиняє періодичне оновлення перед видаленням вебчастини
+  private stopVisibleRequestsRefresh(): void {
+    if (this.visibleRequestsRefreshTimer) {
+      clearInterval(this.visibleRequestsRefreshTimer);
+      this.visibleRequestsRefreshTimer = undefined;
+    }
+  }
+
+  // перечитує лише заявки поточної сторінки без перезапуску основного завантаження
+  private readonly refreshVisibleRequests = async (): Promise<void> => {
+    const { createdFrom, createdTo, data, hasLoadedRequests, isLoading } = this.state;
+    const requestIds = this.visibleRequestIds;
+    const latestKnownRequestId = this.latestKnownRequestId;
+
+    if (
+      this.isVisibleRequestsRefreshInProgress
+      || !hasLoadedRequests
+      || isLoading
+      || !data
+      || (requestIds.length === 0 && latestKnownRequestId === undefined)
+    ) {
+      return;
+    }
+
+    this.isVisibleRequestsRefreshInProgress = true;
+
+    try {
+      const [refreshedRequests, newRequestsResult] = await Promise.all([
+        requestIds.length > 0
+          ? this.service.loadRequestsByIds(requestIds)
+          : Promise.resolve([]),
+        latestKnownRequestId !== undefined
+          ? this.service.loadNewRequestsAfterId(
+            { from: createdFrom, to: createdTo },
+            latestKnownRequestId
+          )
+          : Promise.resolve({
+            requests: [] as IServiceRequest[],
+            latestRequestId: undefined as number | undefined
+          })
+      ]);
+
+      const isDateRangeChanged = this.state.createdFrom.getTime() !== createdFrom.getTime()
+        || this.state.createdTo.getTime() !== createdTo.getTime();
+
+      if (!this.isComponentMounted || isDateRangeChanged) {
+        return;
+      }
+
+      if (newRequestsResult.latestRequestId) {
+        this.latestKnownRequestId = newRequestsResult.latestRequestId;
+      }
+
+      const refreshedRequestsById = new Map(
+        refreshedRequests.map(request => [request.Id, request])
+      );
+      const refreshedRequestIds = new Set(requestIds);
+
+      this.setState(previousState => {
+        if (!previousState.data) {
+          return { data: previousState.data };
+        }
+
+        const existingRequestIds = new Set(
+          previousState.data.requests.map(request => request.Id)
+        );
+        const newRequests = newRequestsResult.requests.filter(request =>
+          !existingRequestIds.has(request.Id)
+        );
+
+        return {
+          data: {
+            ...previousState.data,
+            requests: [
+              ...newRequests,
+              ...previousState.data.requests
+                .filter(request =>
+                  !refreshedRequestIds.has(request.Id) || refreshedRequestsById.has(request.Id)
+                )
+                .map(request => refreshedRequestsById.get(request.Id) ?? request)
+            ]
+          },
+          totalRequests: previousState.totalRequests === undefined
+            ? undefined
+            : previousState.totalRequests + newRequests.length
+        };
+      });
+    } catch {
+      // ігнорує тимчасову помилку щоб не переривати роботу користувача
+    } finally {
+      this.isVisibleRequestsRefreshInProgress = false;
+    }
+  };
+
+  // визначає початковий ідентифікатор для відстеження нових заявок
+  private initializeLatestKnownRequestId(): void {
+    this.service.getLatestRequestId()
+      .then(latestRequestId => {
+        this.latestKnownRequestId = latestRequestId;
+      })
+      .catch(() => undefined);
+  }
 
   // запускає підрахунок загальної кількості заявок вибраного діапазону
   private startRequestsCount(backgroundLoadingVersion: number): void {
@@ -304,6 +433,7 @@ export default class ServiceRequestsPage extends React.Component<
   private readonly handleCreatedFromChange = (date: Date | null | undefined): void => {
     if (date) {
       this.backgroundRequestsLoader.cancel();
+      this.latestKnownRequestId = undefined;
       this.setState(previousState => ({
         createdFrom: date,
         data: previousState.data
@@ -322,6 +452,7 @@ export default class ServiceRequestsPage extends React.Component<
   private readonly handleCreatedToChange = (date: Date | null | undefined): void => {
     if (date) {
       this.backgroundRequestsLoader.cancel();
+      this.latestKnownRequestId = undefined;
       this.setState(previousState => ({
         createdTo: date,
         data: previousState.data
@@ -390,6 +521,7 @@ export default class ServiceRequestsPage extends React.Component<
   // створює заявку та додає її до локального списку
   private readonly handleCreateRequest = async (draft: IServiceRequestDraft): Promise<void> => {
     const createdRequest = await this.service.createRequest(draft);
+    this.latestKnownRequestId = Math.max(this.latestKnownRequestId ?? 0, createdRequest.Id);
 
     this.setState(previousState => ({
       data: previousState.data
@@ -420,6 +552,14 @@ export default class ServiceRequestsPage extends React.Component<
 
         const createdBatch = await Promise.all(createRequestPromises);
         createdRequests.push(...createdBatch);
+      }
+
+      if (createdRequests.length > 0) {
+        const latestCreatedRequestId = Math.max(...createdRequests.map(request => request.Id));
+        this.latestKnownRequestId = Math.max(
+          this.latestKnownRequestId ?? 0,
+          latestCreatedRequestId
+        );
       }
 
       this.setState(previousState => ({
@@ -766,6 +906,7 @@ export default class ServiceRequestsPage extends React.Component<
                   onView={this.handleOpenView}
                   onEdit={this.handleOpenEdit}
                   onDelete={this.handleOpenDelete}
+                  onVisibleRequestIdsChange={this.handleVisibleRequestIdsChange}
                 />
               </>
             ) : (
