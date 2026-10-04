@@ -49,6 +49,12 @@
   margin-top: 25px;
 }
 
+.exportControls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -147,6 +153,14 @@
   }
 
   .groupingSelect {
+    width: 100%;
+  }
+
+  .exportControls {
+    justify-content: flex-start;
+  }
+
+  .exportButton {
     width: 100%;
   }
 

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import * as XLSX from 'xlsx';
 import {
   AllCommunityModule,
   ColDef,
@@ -49,6 +50,19 @@ interface IGroupGridRow extends IRequestGridRowValues {
 
 type IGridRow = IRequestGridRow | IGroupGridRow;
 type TGroupBy = 'none' | 'category' | 'subcategory' | 'status' | 'priority' | 'assignee' | 'requester';
+const exportableFields: Array<keyof IRequestGridRowValues> = [
+  'id',
+  'title',
+  'description',
+  'category',
+  'subcategory',
+  'status',
+  'priority',
+  'requester',
+  'assignee',
+  'dueDate',
+  'estimatedHours'
+];
 
 // вхідні дані таблиці заявок
 interface IServiceRequestsGridProps {
@@ -71,6 +85,13 @@ interface IRequestGridContext {
 interface ICachedRequestGridRow {
   request: IServiceRequest;
   row: IRequestGridRow;
+}
+
+// опис колонки для експорту в excel
+interface IExcelExportColumn {
+  field: keyof IRequestGridRowValues;
+  headerName: string;
+  width: number;
 }
 
 const modules = [AllCommunityModule];
@@ -455,6 +476,40 @@ function formatEstimatedHours(params: ValueFormatterParams<IGridRow, number>): s
   return typeof params.value === 'number' ? hoursFormatter.format(params.value) : '';
 }
 
+// повертає значення комірки у форматі для excel
+function getExcelCellValue(
+  row: IRequestGridRow,
+  field: keyof IRequestGridRowValues
+): string | number {
+  switch (field) {
+    case 'dueDate':
+      return row.dueDate ? dateFormatter.format(row.dueDate) : '';
+    case 'estimatedHours':
+      return row.estimatedHours ?? '';
+    default:
+      const value = row[field];
+      return typeof value === 'number' || typeof value === 'string' ? value : '';
+  }
+}
+
+// перевіряє чи колонка містить значення заявки для експорту
+function isExportableField(field: string | undefined): field is keyof IRequestGridRowValues {
+  return field !== undefined && exportableFields.indexOf(field as keyof IRequestGridRowValues) !== -1;
+}
+
+// створює назву файла з поточною датою
+function getExcelFileName(): string {
+  const today = new Date();
+  const formatDatePart = (value: number): string => value < 10 ? `0${value}` : String(value);
+  const formattedDate = [
+    today.getFullYear(),
+    formatDatePart(today.getMonth() + 1),
+    formatDatePart(today.getDate())
+  ].join('-');
+
+  return `Сервісні_заявки_${formattedDate}.xlsx`;
+}
+
 const columnDefs: ColDef<IGridRow>[] = [
   {
     field: 'id',
@@ -670,6 +725,55 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
     gridApi.current?.setFilterModel(null);
   };
 
+  // експортує відфільтровані та відсортовані заявки у файл excel
+  const handleExportToExcel = (): void => {
+    const api = gridApi.current;
+
+    if (!api) {
+      return;
+    }
+
+    const exportColumns: IExcelExportColumn[] = api.getAllDisplayedColumns()
+      .map(column => {
+        const columnDefinition = column.getColDef();
+        const field = columnDefinition.field;
+
+        return isExportableField(field)
+          ? {
+            field,
+            headerName: columnDefinition.headerName ?? field,
+            width: column.getActualWidth()
+          }
+          : undefined;
+      })
+      .filter((column): column is IExcelExportColumn => column !== undefined);
+
+    if (exportColumns.length === 0) {
+      return;
+    }
+
+    const excelRows: Array<Array<string | number>> = [
+      exportColumns.map(column => column.headerName)
+    ];
+
+    api.forEachNodeAfterFilterAndSort(node => {
+      const row = node.data;
+
+      if (row && !row.isGroup) {
+        excelRows.push(exportColumns.map(column => getExcelCellValue(row, column.field)));
+      }
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(excelRows);
+    worksheet['!cols'] = exportColumns.map(column => ({
+      wch: Math.max(12, Math.min(60, Math.round(column.width / 7)))
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Заявки');
+    XLSX.writeFile(workbook, getExcelFileName(), { compression: true });
+  };
+
   return (
     <AgGridProvider modules={modules}>
       <div className={styles.searchRow}>
@@ -743,7 +847,15 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           onModelUpdated={reportVisibleRequestIds}
         />
       </div>
-      
+
+      <div className={styles.exportControls}>
+        <DefaultButton
+          className={styles.exportButton}
+          text="Експортувати в Excel"
+          iconProps={{ iconName: 'ExcelLogo' }}
+          onClick={handleExportToExcel}
+        />
+      </div>
     </AgGridProvider>
   );
 }
