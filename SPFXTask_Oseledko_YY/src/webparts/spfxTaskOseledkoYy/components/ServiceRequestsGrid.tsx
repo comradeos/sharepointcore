@@ -12,14 +12,13 @@ import {
 } from 'ag-grid-community';
 import { AG_GRID_LOCALE_UA } from '@ag-grid-community/locale';
 import { AgGridProvider, AgGridReact, CustomCellRendererProps } from 'ag-grid-react';
-import { DefaultButton, IconButton, SearchBox, Text, TooltipHost } from '@fluentui/react';
+import { DefaultButton, Dropdown, Icon, IconButton, IDropdownOption, SearchBox, Text, TooltipHost } from '@fluentui/react';
 import { IServiceRequest } from '../models/ServiceDeskModels';
 import ServiceRequestChoiceFilter from './ServiceRequestChoiceFilter';
 import styles from './ServiceRequestsGrid.module.scss';
 
 // значення одного рядка таблиці після перетворення даних sharepoint
-interface IRequestGridRow {
-  request: IServiceRequest;
+interface IRequestGridRowValues {
   id: number;
   title: string;
   description: string;
@@ -32,6 +31,24 @@ interface IRequestGridRow {
   dueDate?: Date;
   estimatedHours?: number;
 }
+
+// звичайний рядок таблиці з даними заявки
+interface IRequestGridRow extends IRequestGridRowValues {
+  request: IServiceRequest;
+  isGroup?: false;
+}
+
+// повноширинний рядок заголовка групи
+interface IGroupGridRow extends IRequestGridRowValues {
+  isGroup: true;
+  groupKey: string;
+  groupLabel: string;
+  groupCount: number;
+  isCollapsed: boolean;
+}
+
+type IGridRow = IRequestGridRow | IGroupGridRow;
+type TGroupBy = 'none' | 'category' | 'subcategory' | 'status' | 'priority' | 'assignee' | 'requester';
 
 // вхідні дані таблиці заявок
 interface IServiceRequestsGridProps {
@@ -47,6 +64,7 @@ interface IRequestGridContext {
   onView: (request: IServiceRequest) => void;
   onEdit: (request: IServiceRequest) => void;
   onDelete: (request: IServiceRequest) => void;
+  onToggleGroup: (groupKey: string) => void;
 }
 
 // кеш одного перетвореного рядка таблиці
@@ -72,6 +90,16 @@ const hoursFormatter = new Intl.NumberFormat('uk-UA', {
   maximumFractionDigits: 1
 });
 const columnStateStorageKey = 'spfx-task-oseledko-yy.service-requests-grid.columns.v1';
+const groupingStorageKey = 'spfx-task-oseledko-yy.service-requests-grid.grouping.v1';
+const groupByOptions: IDropdownOption[] = [
+  { key: 'none', text: 'Без групування' },
+  { key: 'category', text: 'Категорія' },
+  { key: 'subcategory', text: 'Підкатегорія' },
+  { key: 'status', text: 'Статус' },
+  { key: 'priority', text: 'Пріоритет' },
+  { key: 'assignee', text: 'Виконавець' },
+  { key: 'requester', text: 'Заявник' }
+];
 
 // збережений порядок і ширина колонок таблиці
 interface IStoredColumnState {
@@ -110,7 +138,7 @@ function getStoredColumnState(): IStoredColumnState[] | undefined {
 }
 
 // застосовує збережений порядок і ширину колонок
-function applyStoredColumnState(api: GridApi<IRequestGridRow>): void {
+function applyStoredColumnState(api: GridApi<IGridRow>): void {
   const columnState = getStoredColumnState();
 
   if (columnState) {
@@ -119,7 +147,7 @@ function applyStoredColumnState(api: GridApi<IRequestGridRow>): void {
 }
 
 // зберігає поточний порядок і ширину колонок у localstorage
-function saveColumnState(api: GridApi<IRequestGridRow>): void {
+function saveColumnState(api: GridApi<IGridRow>): void {
   const columnState: IStoredColumnState[] = api.getColumnState().map(({ colId, width }) => ({
     colId,
     width: width ?? undefined
@@ -127,6 +155,27 @@ function saveColumnState(api: GridApi<IRequestGridRow>): void {
 
   try {
     window.localStorage.setItem(columnStateStorageKey, JSON.stringify(columnState));
+  } catch {
+    // браузер може заборонити доступ до localstorage
+  }
+}
+
+// читає збережене поле групування з localstorage
+function getStoredGroupBy(): TGroupBy {
+  try {
+    const groupBy = window.localStorage.getItem(groupingStorageKey);
+    const isAvailable = groupByOptions.some(option => option.key === groupBy);
+
+    return isAvailable ? groupBy as TGroupBy : 'none';
+  } catch {
+    return 'none';
+  }
+}
+
+// зберігає вибране поле групування в localstorage
+function saveGroupBy(groupBy: TGroupBy): void {
+  try {
+    window.localStorage.setItem(groupingStorageKey, groupBy);
   } catch {
     // браузер може заборонити доступ до localstorage
   }
@@ -181,9 +230,87 @@ function getGridRows(
   return rows;
 }
 
+// повертає значення заявки для вибраного поля групування
+function getGroupValue(row: IRequestGridRow, groupBy: TGroupBy): string {
+  switch (groupBy) {
+    case 'category':
+      return row.category;
+    case 'subcategory':
+      return row.subcategory;
+    case 'status':
+      return row.status;
+    case 'priority':
+      return row.priority;
+    case 'assignee':
+      return row.assignee;
+    case 'requester':
+      return row.requester;
+    default:
+      return '';
+  }
+}
+
+// додає до списку розгортані заголовки вибраних груп
+function getGroupedRows(
+  rows: IRequestGridRow[],
+  groupBy: TGroupBy,
+  collapsedGroupKeys: Set<string>
+): IGridRow[] {
+  if (groupBy === 'none') {
+    return rows;
+  }
+
+  const groups = new Map<string, { label: string; rows: IRequestGridRow[] }>();
+
+  for (const row of rows) {
+    const label = getGroupValue(row, groupBy) || 'Не вказано';
+    const key = `${groupBy}:${label}`;
+    const group = groups.get(key);
+
+    if (group) {
+      group.rows.push(row);
+    } else {
+      groups.set(key, { label, rows: [row] });
+    }
+  }
+
+  const groupedRows: IGridRow[] = [];
+  let groupIndex = 0;
+
+  for (const [key, group] of Array.from(groups.entries())) {
+    const isCollapsed = collapsedGroupKeys.has(key);
+    groupedRows.push({
+      id: -(groupIndex + 1),
+      isGroup: true,
+      groupKey: key,
+      groupLabel: group.label,
+      groupCount: group.rows.length,
+      isCollapsed,
+      title: group.label,
+      description: group.label,
+      category: group.label,
+      subcategory: group.label,
+      status: group.label,
+      priority: group.label,
+      requester: group.label,
+      assignee: group.label
+    });
+
+    if (!isCollapsed) {
+      groupedRows.push(...group.rows);
+    }
+
+    groupIndex += 1;
+  }
+
+  return groupedRows;
+}
+
 // повертає стабільний ідентифікатор рядка для локального оновлення ag grid
-function getRequestRowId(params: GetRowIdParams<IRequestGridRow>): string {
-  return String(params.data.id);
+function getRequestRowId(params: GetRowIdParams<IGridRow>): string {
+  return params.data.isGroup
+    ? `group:${params.data.groupKey}:${params.data.isCollapsed ? 'collapsed' : 'expanded'}`
+    : String(params.data.id);
 }
 
 // повертає ім'я власника чинного блокування заявки
@@ -205,28 +332,30 @@ function getActiveEditLockOwner(request: IServiceRequest): string | undefined {
 
 // показує кнопки дій для одного рядка таблиці
 function RequestActionsRenderer(
-  props: CustomCellRendererProps<IRequestGridRow, undefined, IRequestGridContext>
-): React.ReactElement | undefined {
-  if (!props.data) {
-    return undefined;
+  props: CustomCellRendererProps<IGridRow, undefined, IRequestGridContext>
+): React.ReactElement {
+  if (!props.data || props.data.isGroup) {
+    return <></>;
   }
+
+  const request = props.data.request;
 
   // передає вибрану заявку обробнику сторінки
   const handleView = (): void => {
-    props.context.onView(props.data?.request as IServiceRequest);
+    props.context.onView(request);
   };
 
   // передає вибрану заявку до форми редагування
   const handleEdit = (): void => {
-    props.context.onEdit(props.data?.request as IServiceRequest);
+    props.context.onEdit(request);
   };
 
   // передає вибрану заявку до підтвердження видалення
   const handleDelete = (): void => {
-    props.context.onDelete(props.data?.request as IServiceRequest);
+    props.context.onDelete(request);
   };
 
-  const editLockOwner = getActiveEditLockOwner(props.data.request);
+  const editLockOwner = getActiveEditLockOwner(request);
   const isDeleteDisabled = editLockOwner !== undefined;
   const deleteTooltip = isDeleteDisabled
     ? `Заявку редагує ${editLockOwner}`
@@ -272,8 +401,38 @@ function RequestActionsRenderer(
   );
 }
 
+// показує ідентифікатор заявки або заголовок групи в першій колонці
+function RequestIdRenderer(
+  props: CustomCellRendererProps<IGridRow, undefined, IRequestGridContext>
+): React.ReactElement {
+  if (!props.data) {
+    return <></>;
+  }
+
+  if (!props.data.isGroup) {
+    return <>{props.valueFormatted ?? props.value}</>;
+  }
+
+  const group = props.data;
+  const iconName = group.isCollapsed ? 'ChevronRight' : 'ChevronDown';
+  const actionName = group.isCollapsed ? 'Розгорнути' : 'Згорнути';
+
+  return (
+    <button
+      type="button"
+      className={styles.groupHeader}
+      onClick={() => props.context.onToggleGroup(group.groupKey)}
+      aria-label={`${actionName} групу ${group.groupLabel}`}
+    >
+      <Icon iconName={iconName} className={styles.groupHeaderIcon} />
+      <span>{group.groupLabel}</span>
+      <span className={styles.groupCount}>{group.groupCount}</span>
+    </button>
+  );
+}
+
 // показує дату українською мовою без зміни числового значення для сортування
-function formatDueDate(params: ValueFormatterParams<IRequestGridRow, Date>): string {
+function formatDueDate(params: ValueFormatterParams<IGridRow, Date>): string {
   return params.value instanceof Date ? dateFormatter.format(params.value) : '';
 }
 
@@ -292,18 +451,19 @@ function compareDueDate(filterDate: Date, cellValue: Date): number {
 }
 
 // показує кількість годин з українським десятковим роздільником
-function formatEstimatedHours(params: ValueFormatterParams<IRequestGridRow, number>): string {
+function formatEstimatedHours(params: ValueFormatterParams<IGridRow, number>): string {
   return typeof params.value === 'number' ? hoursFormatter.format(params.value) : '';
 }
 
-const columnDefs: ColDef<IRequestGridRow>[] = [
+const columnDefs: ColDef<IGridRow>[] = [
   {
     field: 'id',
     headerName: 'ID',
     width: 90,
     pinned: 'left',
     lockPinned: true,
-    suppressMovable: true
+    suppressMovable: true,
+    cellRenderer: RequestIdRenderer
   },
   {
     field: 'title',
@@ -388,23 +548,42 @@ const columnDefs: ColDef<IRequestGridRow>[] = [
   }
 ];
 
-const defaultColDef: ColDef<IRequestGridRow> = {
+const defaultColDef: ColDef<IGridRow> = {
   sortable: true,
   resizable: true,
-  filter: false
+  filter: false,
+  cellClassRules: {
+    [styles.groupRowCell]: params => Boolean(params.data?.isGroup)
+  }
 };
 
 // відображає заявки в ag grid із сортуванням та українською локалізацією
 export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): React.ReactElement {
   const [searchText, setSearchText] = React.useState('');
-  const gridApi = React.useRef<GridApi<IRequestGridRow>>();
+  const [groupBy, setGroupBy] = React.useState<TGroupBy>(getStoredGroupBy);
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = React.useState<Set<string>>(new Set());
+  const gridApi = React.useRef<GridApi<IGridRow>>();
   const rowCache = React.useRef<Map<number, ICachedRequestGridRow>>(new Map());
-  const rows = getGridRows(props.requests, rowCache.current);
+  const requestRows = getGridRows(props.requests, rowCache.current);
+  const rows = getGroupedRows(requestRows, groupBy, collapsedGroupKeys);
 
   const gridContext: IRequestGridContext = {
     onView: props.onView,
     onEdit: props.onEdit,
-    onDelete: props.onDelete
+    onDelete: props.onDelete,
+    onToggleGroup: groupKey => {
+      setCollapsedGroupKeys(currentKeys => {
+        const nextKeys = new Set(currentKeys);
+
+        if (nextKeys.has(groupKey)) {
+          nextKeys.delete(groupKey);
+        } else {
+          nextKeys.add(groupKey);
+        }
+
+        return nextKeys;
+      });
+    }
   };
   // зберігає введений текст загального пошуку
   const handleSearchChange = (_event?: React.ChangeEvent<HTMLInputElement>, value?: string): void => {
@@ -419,38 +598,69 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
       return;
     }
 
-    const displayedRequests: IServiceRequest[] = [];
-    api.forEachNodeAfterFilterAndSort(node => {
-      if (node.data) {
-        displayedRequests.push(node.data.request);
-      }
-    });
-
     const pageSize = api.paginationGetPageSize();
     const pageStartIndex = api.paginationGetCurrentPage() * pageSize;
-    const visibleRequestIds = displayedRequests
-      .slice(pageStartIndex, pageStartIndex + pageSize)
-      .map(request => request.Id);
+    const pageEndIndex = pageStartIndex + pageSize;
+    const visibleRequestIds: number[] = [];
+
+    api.forEachNodeAfterFilterAndSort(node => {
+      if (
+        node.data
+        && !node.data.isGroup
+        && node.rowIndex !== null
+        && node.rowIndex >= pageStartIndex
+        && node.rowIndex < pageEndIndex
+      ) {
+        visibleRequestIds.push(node.data.request.Id);
+      }
+    });
 
     props.onVisibleRequestIdsChange(visibleRequestIds);
   };
 
+  // змінює поле групування та розгортає всі його групи
+  const handleGroupByChange = (
+    _event: React.FormEvent<HTMLDivElement>,
+    option?: IDropdownOption
+  ): void => {
+    if (!option || !groupByOptions.some(groupOption => groupOption.key === option.key)) {
+      return;
+    }
+
+    const nextGroupBy = option.key as TGroupBy;
+    setGroupBy(nextGroupBy);
+    setCollapsedGroupKeys(new Set());
+    saveGroupBy(nextGroupBy);
+  };
+
+  // згортає всі групи вибраного поля
+  const handleCollapseAllGroups = (): void => {
+    setCollapsedGroupKeys(new Set(
+      requestRows.map(row => `${groupBy}:${getGroupValue(row, groupBy) || 'Не вказано'}`)
+    ));
+  };
+
+  // розгортає всі групи вибраного поля
+  const handleExpandAllGroups = (): void => {
+    setCollapsedGroupKeys(new Set());
+  };
+
   // зберігає api таблиці для очищення фільтрів
-  const handleGridReady = (event: GridReadyEvent<IRequestGridRow>): void => {
+  const handleGridReady = (event: GridReadyEvent<IGridRow>): void => {
     gridApi.current = event.api;
     applyStoredColumnState(event.api);
     reportVisibleRequestIds();
   };
 
   // зберігає ширину колонки після завершення зміни розміру
-  const handleColumnResized = (event: ColumnResizedEvent<IRequestGridRow>): void => {
+  const handleColumnResized = (event: ColumnResizedEvent<IGridRow>): void => {
     if (event.finished) {
       saveColumnState(event.api);
     }
   };
 
   // зберігає порядок колонок після перетягування
-  const handleColumnMoved = (event: ColumnMovedEvent<IRequestGridRow>): void => {
+  const handleColumnMoved = (event: ColumnMovedEvent<IGridRow>): void => {
     saveColumnState(event.api);
   };
 
@@ -474,12 +684,41 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
             onChange={handleSearchChange}
           />
 
-          <DefaultButton text="Очистити фільтри" onClick={handleClearFilters} />
+          <DefaultButton
+            className={styles.secondaryActionButton}
+            text="Очистити фільтри"
+            onClick={handleClearFilters}
+          />
         </div>
       </div>
 
+      <div className={styles.groupingControls}>
+        <Dropdown
+          className={styles.groupingSelect}
+          label="Групувати за"
+          selectedKey={groupBy}
+          options={groupByOptions}
+          onChange={handleGroupByChange}
+        />
+
+        {groupBy !== 'none' && (
+          <div className={styles.groupingActions}>
+            <DefaultButton
+              className={styles.secondaryActionButton}
+              text="Розгорнути всі"
+              onClick={handleExpandAllGroups}
+            />
+            <DefaultButton
+              className={styles.secondaryActionButton}
+              text="Згорнути всі"
+              onClick={handleCollapseAllGroups}
+            />
+          </div>
+        )}
+      </div>
+
       <div className={styles.grid}>
-        <AgGridReact<IRequestGridRow>
+        <AgGridReact<IGridRow>
           rowData={rows}
           getRowId={getRequestRowId}
           columnDefs={columnDefs}
@@ -488,11 +727,13 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           context={gridContext}
           theme={themeQuartz}
           accentedSort={true}
+          suppressCellFocus={groupBy !== 'none'}
           pagination={true}
           paginationPageSize={10}
           paginationPageSizeSelector={[10, 25, 50]}
           quickFilterText={searchText}
           cacheQuickFilter={true}
+          getRowHeight={params => params.data?.isGroup ? 44 : undefined}
           onGridReady={handleGridReady}
           onColumnResized={handleColumnResized}
           onColumnMoved={handleColumnMoved}
