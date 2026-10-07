@@ -3,7 +3,7 @@
   "solution": {
     "name": "spfx-task-oseledko-yy-client-side-solution",
     "id": "652315a7-72f5-4d7a-a467-b93a41a1c267",
-    "version": "1.0.2.0",
+    "version": "1.0.3.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,
@@ -30,7 +30,7 @@
         "title": "Сервісні заявки",
         "description": "Активує вебчастину для роботи із сервісними заявками",
         "id": "27242570-aeef-4ede-8420-969e85efc1dc",
-        "version": "1.0.2.0"
+        "version": "1.0.3.0"
       }
     ]
   },

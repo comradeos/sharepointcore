@@ -101,7 +101,7 @@ function formatEstimatedHours(params: ValueFormatterParams<IGridRow, number>): s
 
 export const requestGridColumnDefs: ColDef<IGridRow>[] = [
   { field: 'id', headerName: 'ID', width: 90, pinned: 'left', lockPinned: true, suppressMovable: true, cellRenderer: RequestIdRenderer },
-  { field: 'title', headerName: 'Назва заявки', width: 150, pinned: 'left', lockPinned: true, suppressMovable: true, filter: 'agTextColumnFilter' },
+  { field: 'title', headerName: 'Назва заявки', width: 150, filter: 'agTextColumnFilter' },
   { field: 'description', headerName: 'Опис', minWidth: 240, filter: 'agTextColumnFilter' },
   { field: 'category', headerName: 'Категорія', minWidth: 160, filter: ServiceRequestChoiceFilter },
   { field: 'subcategory', headerName: 'Підкатегорія', minWidth: 170, filter: ServiceRequestChoiceFilter },

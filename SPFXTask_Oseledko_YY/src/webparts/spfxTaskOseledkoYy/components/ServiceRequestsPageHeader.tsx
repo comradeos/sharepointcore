@@ -34,6 +34,8 @@ export default function ServiceRequestsPageHeader(
   props: IServiceRequestsPageHeaderProps
 ): React.ReactElement {
   const isDisabled = props.isLoading || props.isBackgroundRequestsLoading;
+  // приховує кнопку щоб за потреби швидко повернути ручне оновлення
+  const showManualRefreshButton = false;
 
   return (
     <Stack className={styles.header}>
@@ -80,12 +82,14 @@ export default function ServiceRequestsPageHeader(
                 disabled={isDisabled}
               />
 
-              <DefaultButton
-                text="Оновити"
-                onClick={props.onRefresh}
-                disabled={isDisabled}
-                className={styles.refreshButton}
-              />
+              {showManualRefreshButton && (
+                <DefaultButton
+                  text="Оновити"
+                  onClick={props.onRefresh}
+                  disabled={isDisabled}
+                  className={styles.refreshButton}
+                />
+              )}
 
               <PrimaryButton
                 text="Створити"

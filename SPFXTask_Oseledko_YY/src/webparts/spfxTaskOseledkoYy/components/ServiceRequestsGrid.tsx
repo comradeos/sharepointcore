@@ -219,6 +219,7 @@ export default function ServiceRequestsGrid(props: IServiceRequestsGridProps): R
           context={gridContext}
           theme={themeQuartz}
           accentedSort={true}
+          domLayout="autoHeight"
           suppressCellFocus={groupBy !== 'none'}
           pagination={true}
           paginationPageSize={10}

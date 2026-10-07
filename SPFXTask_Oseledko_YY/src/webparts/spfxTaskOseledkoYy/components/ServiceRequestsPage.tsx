@@ -77,7 +77,7 @@ export default class ServiceRequestsPage extends React.Component<
     const currentDate = this.getCurrentDate();
 
     this.state = {
-      createdFrom: currentDate,
+      createdFrom: this.getDateDaysBefore(currentDate, 14),
       createdTo: currentDate,
       hasLoadedRequests: false,
       isLoading: false,
@@ -114,7 +114,7 @@ export default class ServiceRequestsPage extends React.Component<
       .catch(this.handleLoadError);
   }
 
-  // зберігає довідники та створює порожній стан списку заявок
+  // зберігає довідники та завантажує заявки початкового діапазону дат
   private readonly handleDictionariesLoadSuccess = (
     dictionaries: IServiceDeskDictionaries
   ): void => {
@@ -124,7 +124,7 @@ export default class ServiceRequestsPage extends React.Component<
         requests: []
       },
       isLoading: false
-    });
+    }, this.handleRefresh);
   };
 
   // завантажує першу сторінку заявок за вибраним діапазоном дат створення
@@ -400,41 +400,23 @@ export default class ServiceRequestsPage extends React.Component<
     this.loadRequests({ from: createdFrom, to: createdTo });
   };
 
-  // зберігає нижню межу дат та очищає завантажені заявки
+  // зберігає нижню межу дат та одразу оновлює список без очищення таблиці
   private readonly handleCreatedFromChange = (date: Date | null | undefined): void => {
     if (date) {
-      this.backgroundRequestsLoader.cancel();
-      this.latestKnownRequestId = undefined;
-      this.setState(previousState => ({
+      this.setState({
         createdFrom: date,
-        data: previousState.data
-          ? { ...previousState.data, requests: [] }
-          : previousState.data,
-        hasLoadedRequests: false,
-        isBackgroundRequestsLoading: false,
-        isCountingRequests: false,
-        totalRequests: undefined,
         error: undefined
-      }));
+      }, this.handleRefresh);
     }
   };
 
-  // зберігає верхню межу дат та очищає завантажені заявки
+  // зберігає верхню межу дат та одразу оновлює список без очищення таблиці
   private readonly handleCreatedToChange = (date: Date | null | undefined): void => {
     if (date) {
-      this.backgroundRequestsLoader.cancel();
-      this.latestKnownRequestId = undefined;
-      this.setState(previousState => ({
+      this.setState({
         createdTo: date,
-        data: previousState.data
-          ? { ...previousState.data, requests: [] }
-          : previousState.data,
-        hasLoadedRequests: false,
-        isBackgroundRequestsLoading: false,
-        isCountingRequests: false,
-        totalRequests: undefined,
         error: undefined
-      }));
+      }, this.handleRefresh);
     }
   };
 
@@ -447,6 +429,11 @@ export default class ServiceRequestsPage extends React.Component<
       currentDate.getMonth(),
       currentDate.getDate()
     );
+  }
+
+  // повертає початок дня на задану кількість днів раніше
+  private getDateDaysBefore(date: Date, days: number): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - days);
   }
 
   // форматує дату для відображення у полі fluent ui
@@ -503,6 +490,9 @@ export default class ServiceRequestsPage extends React.Component<
         : previousState.data,
       success: 'Заявку успішно створено',
       hasLoadedRequests: true,
+      totalRequests: previousState.totalRequests === undefined
+        ? undefined
+        : previousState.totalRequests + 1,
       error: undefined
     }));
   };
@@ -545,6 +535,9 @@ export default class ServiceRequestsPage extends React.Component<
           : previousState.data,
         success: `Створено заявок: ${drafts.length}`,
         hasLoadedRequests: true,
+        totalRequests: previousState.totalRequests === undefined
+          ? undefined
+          : previousState.totalRequests + createdRequests.length,
         error: undefined
       }));
     } catch (error) {
@@ -834,9 +827,7 @@ export default class ServiceRequestsPage extends React.Component<
                   onVisibleRequestIdsChange={this.handleVisibleRequestIdsChange}
                 />
               </>
-            ) : (
-              <Text variant="medium">Заявки ще не завантажено Натисніть Оновити</Text>
-            )}
+            ) : null}
 
             {isCreateOpen && (
               <ServiceRequestForm
